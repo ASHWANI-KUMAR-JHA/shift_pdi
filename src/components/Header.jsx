@@ -1,8 +1,8 @@
-import { FolderOpen, Download, RotateCcw, PenTool, LogOut, FileSpreadsheet, Combine, ClipboardList, FileCheck, Users, Package, ClipboardCheck, Mail } from 'lucide-react';
+import { FolderOpen, Download, RotateCcw, LogOut, ClipboardList, FileCheck, Users, Package, ClipboardCheck, Mail } from 'lucide-react';
 import Logo from './Logo';
 import './Header.css';
 
-function Header({ companyName, onProjectsClick, onExportClick, onResetClick, onBuilderClick, onFlashReportClick, onLetterGeneratorClick, onMergePdfClick, onWorkOrdersClick, onInstallationsClick, onJcrClick, onJcrSelectClick, onPdiClick, onUsersClick, onLogoutClick }) {
+function Header({ companyName, onProjectsClick, onExportClick, onResetClick, onLetterGeneratorClick, onWorkOrdersClick, onInstallationsClick, onJcrClick, onJcrSelectClick, onPdiClick, onUsersClick, onLogoutClick }) {
   return (
     <header className="header">
       <div className="header-inner">
@@ -16,21 +16,9 @@ function Header({ companyName, onProjectsClick, onExportClick, onResetClick, onB
           </div>
         </div>
         <div className="header-right">
-          <button className="header-btn primary" onClick={onBuilderClick} title="Interactive SLD Builder">
-            <PenTool size={18} />
-            <span>Builder</span>
-          </button>
-          <button className="header-btn primary" onClick={onFlashReportClick} title="Flash Test Report">
-            <FileSpreadsheet size={18} />
-            <span>Flash Report</span>
-          </button>
           <button className="header-btn primary" onClick={onLetterGeneratorClick} title="Letter Generator">
             <Mail size={18} />
             <span>Letters</span>
-          </button>
-          <button className="header-btn primary" onClick={onMergePdfClick} title="Merge PDF Files">
-            <Combine size={18} />
-            <span>Merge PDF</span>
           </button>
           <button className="header-btn primary" onClick={onWorkOrdersClick} title="Work Orders">
             <Package size={18} />

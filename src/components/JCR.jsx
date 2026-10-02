@@ -11,12 +11,6 @@ import './JCR.css';
 const JCR = ({ onBack, onLogout }) => {
   // Common fields state
   const [formData, setFormData] = useState({
-    // Letter Section (before Section 1)
-    letterTo: 'The Director New and Renewable Energy Dept & HAREDA',
-    letterAddress: 'Akshay Urja Bhawan, Sector-17, Panchkula Haryana',
-    letterSubject: '',
-    letterBody: '',
-    
     // Header / Common Fields (Format-III)
     systemName: 'Solar Street Lighting System',
     district: '',
@@ -47,25 +41,10 @@ const JCR = ({ onBack, onLogout }) => {
     userSignatoryName: '',
     poApoName: '',
     countersignAuthority: 'Addl. Deputy Commissioner-cum-Chief Project Officer, PANCHKULA',
-    
-    // Section 6 - Additional Certification Fields
-    certificationDate: '',
-    inspectionOfficer: '',
-    technicalSpecsCompliance: 'YES',
-    safetyStandardsCompliance: 'YES',
-    warrantyPeriod: '5 Years',
-    maintenanceSchedule: 'As per manufacturer guidelines',
-    
+
     // Variable fields (repeatable rows)
     installations: [],
   });
-
-  // Letter template options
-  const [letterTemplates, setLetterTemplates] = useState([
-    { id: 1, name: 'Default Payment Request', subject: 'Request to release 30% payment against work order no:', body: 'With reference to the subject above we are writing this letter to inform you that we received the order for Supply, Installation and Commissioning of LED based Solar Street Lights. We had completed the installation of above said lights in various villages. So, we requesting you to please release our 30% payment against installation receipt. We are enclosed the original Bill and Installation receipt for necessary action.' },
-    { id: 2, name: 'Installation Complete', subject: 'Installation Completion Report', body: 'This is to certify that the installation and commissioning of solar street lighting systems has been completed as per the work order specifications and requirements.' },
-  ]);
-  const [selectedTemplate, setSelectedTemplate] = useState(null);
 
   const [currentDraft, setCurrentDraft] = useState(null);
   const [savedDrafts, setSavedDrafts] = useState([]);
@@ -168,32 +147,6 @@ const JCR = ({ onBack, onLogout }) => {
 
   const handleCommonFieldChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
-  };
-
-  const handleAddLetterTemplate = () => {
-    const name = prompt('Enter template name:');
-    if (!name) return;
-    const newTemplate = {
-      id: letterTemplates.length > 0 ? Math.max(...letterTemplates.map(t => t.id)) + 1 : 1,
-      name,
-      subject: formData.letterSubject,
-      body: formData.letterBody,
-    };
-    setLetterTemplates(prev => [...prev, newTemplate]);
-  };
-
-  const handleRemoveLetterTemplate = (id) => {
-    if (!window.confirm('Delete this template?')) return;
-    setLetterTemplates(prev => prev.filter(t => t.id !== id));
-  };
-
-  const handleLoadLetterTemplate = (template) => {
-    setFormData(prev => ({
-      ...prev,
-      letterSubject: template.subject,
-      letterBody: template.body,
-    }));
-    setSelectedTemplate(template.id);
   };
 
   const handleInstallationChange = (index, field, value) => {
@@ -393,10 +346,6 @@ const JCR = ({ onBack, onLogout }) => {
 
     setFormData(prev => ({
       ...prev,
-      letterTo: 'The Director New and Renewable Energy Dept & HAREDA',
-      letterAddress: 'Akshay Urja Bhawan, Sector-17, Panchkula Haryana',
-      letterSubject: `Request to release 30% payment against work order no: DNRE/2025-2026/${randInt(10000, 99999)} District ${pick(districts)}`,
-      letterBody: 'With reference to the subject above, we are writing to inform you that we received the order for Supply, Installation and Commissioning of LED based Solar Street Lights. We have completed the installation of the said lights in various villages. We request you to please release our 30% payment against installation receipt. The original Bill and Installation receipt are enclosed for necessary action.',
       systemName: 'Solar Street Lighting System',
       district: `${pick(districts)} (BLOCK: ${pick(blocks)}, VILLAGE: ${pick(villages)})`,
       rateContractNo: `119/HR/RC/E-5/2025-26/${randInt(10000, 99999)} dated 29.01.2026`,
@@ -687,89 +636,6 @@ const JCR = ({ onBack, onLogout }) => {
       )}
 
       <form className="jcr-form" onSubmit={(e) => e.preventDefault()}>
-        {/* Letter Section - Above Section 1 */}
-        <section className="form-section letter-section">
-          <h2 className="section-title">
-            <span className="section-icon">✉️</span>
-            Letter / Cover Document
-            <span className="format-tag">Optional</span>
-          </h2>
-
-          <div className="letter-templates">
-            <label style={{ fontWeight: 600, marginBottom: '8px', display: 'block' }}>Quick Templates:</label>
-            <div className="template-buttons">
-              {letterTemplates.map(template => (
-                <div key={template.id} className="template-item">
-                  <button
-                    type="button"
-                    className={`btn btn-secondary btn-small ${selectedTemplate === template.id ? 'active' : ''}`}
-                    onClick={() => handleLoadLetterTemplate(template)}
-                  >
-                    {template.name}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-icon-small danger"
-                    onClick={() => handleRemoveLetterTemplate(template.id)}
-                    title="Delete template"
-                  >
-                    ✕
-                  </button>
-                </div>
-              ))}
-              <button
-                type="button"
-                className="btn btn-secondary btn-small"
-                onClick={handleAddLetterTemplate}
-              >
-                + Save Current as Template
-              </button>
-            </div>
-          </div>
-          
-          <div className="form-grid">
-            <div className="form-field full-width">
-              <label>To</label>
-              <input
-                type="text"
-                value={formData.letterTo}
-                onChange={(e) => handleCommonFieldChange('letterTo', e.target.value)}
-                placeholder="Recipient name/designation"
-              />
-            </div>
-
-            <div className="form-field full-width">
-              <label>Address</label>
-              <textarea
-                rows={2}
-                value={formData.letterAddress}
-                onChange={(e) => handleCommonFieldChange('letterAddress', e.target.value)}
-                placeholder="Full address"
-              />
-            </div>
-
-            <div className="form-field full-width">
-              <label>Subject</label>
-              <input
-                type="text"
-                value={formData.letterSubject}
-                onChange={(e) => handleCommonFieldChange('letterSubject', e.target.value)}
-                placeholder="e.g., Request to release 30% payment against work order no: DNRE/2025-2026/10521 DATED: 18/02/2026 District Ambala"
-              />
-            </div>
-
-            <div className="form-field full-width">
-              <label>Letter Body</label>
-              <textarea
-                rows={6}
-                value={formData.letterBody}
-                onChange={(e) => handleCommonFieldChange('letterBody', e.target.value)}
-                placeholder="Main content of the letter..."
-              />
-            </div>
-          </div>
-        </section>
-
         {/* Section 1: Header / Common Fields */}
         <section className="form-section">
           <h2 className="section-title">
@@ -1212,82 +1078,6 @@ const JCR = ({ onBack, onLogout }) => {
           />
         </section>
 
-        {/* Section 6: Additional Certification & Compliance */}
-        <section className="form-section">
-          <h2 className="section-title">
-            <span className="section-number">6</span>
-            Additional Certification & Compliance
-            <span className="format-tag">Format-IV</span>
-          </h2>
-          
-          <div className="form-grid">
-            <div className="form-field">
-              <ComboboxWithHistory
-                fieldId="jcr.certificationDate"
-                value={formData.certificationDate}
-                onChange={(value) => handleCommonFieldChange('certificationDate', value)}
-                label="Certification Date"
-                type="date"
-              />
-            </div>
-
-            <div className="form-field">
-              <ComboboxWithHistory
-                fieldId="jcr.inspectionOfficer"
-                value={formData.inspectionOfficer}
-                onChange={(value) => handleCommonFieldChange('inspectionOfficer', value)}
-                label="Inspection Officer Name"
-                placeholder="Name and designation"
-              />
-            </div>
-
-            <div className="form-field">
-              <label>Technical Specifications Compliance</label>
-              <select
-                value={formData.technicalSpecsCompliance}
-                onChange={(e) => handleCommonFieldChange('technicalSpecsCompliance', e.target.value)}
-                style={{ padding: '0.625rem 0.875rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '0.875rem' }}
-              >
-                <option value="YES">YES - Compliant</option>
-                <option value="NO">NO - Non-compliant</option>
-                <option value="PARTIAL">PARTIAL - Partially compliant</option>
-              </select>
-            </div>
-
-            <div className="form-field">
-              <label>Safety Standards Compliance</label>
-              <select
-                value={formData.safetyStandardsCompliance}
-                onChange={(e) => handleCommonFieldChange('safetyStandardsCompliance', e.target.value)}
-                style={{ padding: '0.625rem 0.875rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '0.875rem' }}
-              >
-                <option value="YES">YES - Compliant</option>
-                <option value="NO">NO - Non-compliant</option>
-                <option value="PARTIAL">PARTIAL - Partially compliant</option>
-              </select>
-            </div>
-
-            <div className="form-field">
-              <ComboboxWithHistory
-                fieldId="jcr.warrantyPeriod"
-                value={formData.warrantyPeriod}
-                onChange={(value) => handleCommonFieldChange('warrantyPeriod', value)}
-                label="Warranty Period"
-                placeholder="e.g., 5 Years"
-              />
-            </div>
-
-            <div className="form-field full-width">
-              <ComboboxWithHistory
-                fieldId="jcr.maintenanceSchedule"
-                value={formData.maintenanceSchedule}
-                onChange={(value) => handleCommonFieldChange('maintenanceSchedule', value)}
-                label="Maintenance Schedule"
-                placeholder="Maintenance requirements and schedule"
-              />
-            </div>
-          </div>
-        </section>
       </form>
     </div>
   );

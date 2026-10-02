@@ -1,0 +1,16 @@
+# Netlify build configuration for the Vite + React app.
+
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  # Use a modern, stable Node version for the build.
+  NODE_VERSION = "20"
+
+# Single-page app: route every path back to index.html so client-side
+# navigation and query-param links (?form=install, ?page=...) work on reload.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
