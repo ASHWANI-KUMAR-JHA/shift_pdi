@@ -392,34 +392,119 @@ function LetterGenerator({ onBack, onLogout }) {
       y += 4;
     }
 
-    // Subject (bold)
+    // Subject (with rich text support)
     if (renderedSubject.trim()) {
-      doc.setFont('helvetica', 'bold');
       doc.setFontSize(11);
-      const subjectLines = doc.splitTextToSize(`Subject: ${renderedSubject}`, contentWidth);
-      subjectLines.forEach((line) => {
-        doc.text(line, margin, y);
-        y += 6;
-      });
-      y += 4;
+      const subjectSegments = parseRichText(`Subject: ${renderedSubject}`);
+      let currentX = margin;
+      
+      for (const seg of subjectSegments) {
+        let fontStyle = 'bold'; // Subject is always bold by default
+        if (seg.bold && seg.italic) fontStyle = 'bolditalic';
+        else if (seg.italic) fontStyle = 'italic';
+        
+        doc.setFont('helvetica', fontStyle);
+        if (seg.color) {
+          const hex = seg.color.replace('#', '');
+          const r = parseInt(hex.substr(0, 2), 16);
+          const g = parseInt(hex.substr(2, 2), 16);
+          const b = parseInt(hex.substr(4, 2), 16);
+          doc.setTextColor(r, g, b);
+        } else {
+          doc.setTextColor(0, 0, 0);
+        }
+        
+        doc.text(seg.text, currentX, y);
+        currentX += doc.getTextWidth(seg.text);
+      }
+      y += 10;
     }
 
-    // Body (wrap + paginate)
-    doc.setFont('helvetica', 'normal');
+    // Body (wrap + paginate with rich text formatting)
     doc.setFontSize(11);
     const lineHeight = 6;
+    
+    // Parse the rendered body into segments with formatting
+    const bodySegments = parseRichText(renderedBody);
+    
+    // Process segments and handle text wrapping
     const paragraphs = renderedBody.split(/\n/);
+    
     for (const para of paragraphs) {
-      const lines = para.trim() === '' ? [''] : doc.splitTextToSize(para, contentWidth);
-      for (const line of lines) {
+      if (para.trim() === '') {
+        // Empty paragraph - add space
         if (y > bottomLimit) {
           doc.addPage();
           drawHeaderFooter();
           y = topStart;
         }
-        doc.text(line, margin, y);
         y += lineHeight;
+        continue;
       }
+      
+      // Parse this paragraph for formatting
+      const paraSegments = parseRichText(para);
+      let currentLine = '';
+      let currentX = margin;
+      
+      for (const seg of paraSegments) {
+        // Set font style based on segment
+        let fontStyle = 'normal';
+        if (seg.bold && seg.italic) fontStyle = 'bolditalic';
+        else if (seg.bold) fontStyle = 'bold';
+        else if (seg.italic) fontStyle = 'italic';
+        
+        doc.setFont('helvetica', fontStyle);
+        if (seg.color) {
+          // Parse hex color
+          const hex = seg.color.replace('#', '');
+          const r = parseInt(hex.substr(0, 2), 16);
+          const g = parseInt(hex.substr(2, 2), 16);
+          const b = parseInt(hex.substr(4, 2), 16);
+          doc.setTextColor(r, g, b);
+        } else {
+          doc.setTextColor(0, 0, 0);
+        }
+        
+        // Handle text wrapping word by word
+        const words = seg.text.split(' ');
+        for (let i = 0; i < words.length; i++) {
+          const word = words[i] + (i < words.length - 1 ? ' ' : '');
+          const testLine = currentLine + word;
+          const testWidth = doc.getTextWidth(testLine);
+          
+          if (testWidth > contentWidth && currentLine !== '') {
+            // Line is full, print it
+            if (y > bottomLimit) {
+              doc.addPage();
+              drawHeaderFooter();
+              y = topStart;
+            }
+            doc.text(currentLine, currentX, y);
+            y += lineHeight;
+            currentLine = word;
+            currentX = margin;
+          } else {
+            currentLine = testLine;
+          }
+        }
+        
+        // Print current segment and continue
+        if (currentLine !== '') {
+          const segWidth = doc.getTextWidth(currentLine);
+          if (y > bottomLimit) {
+            doc.addPage();
+            drawHeaderFooter();
+            y = topStart;
+          }
+          doc.text(currentLine, currentX, y);
+          currentX += segWidth;
+          currentLine = '';
+        }
+      }
+      
+      // Move to next line after paragraph
+      y += lineHeight;
     }
 
     const fileName = (draft.name || 'letter').replace(/[^\w-]+/g, '_').toLowerCase();

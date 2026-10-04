@@ -291,15 +291,15 @@ const generateFormatIIIa = (doc, formData) => {
   doc.text(`Capacity of battery:  ${val(formData.batteryCapacity)} (Wh)`, rightColX, y);
   y += 8;
 
-  // Build the table body exactly matching the 10 official columns.
+  // Build the table body with separate lat/long columns (12 columns total).
   const installations = formData.installations || [];
   const body = installations.map((inst, idx) => {
-    const photoCell =
-      `Lat: ${val(inst.latitude)}\nLong: ${val(inst.longitude)}\nDate: ${formatDate(inst.photoDate)}`;
     return [
       val(inst.serialNo) || String(idx + 1),
       val(inst.beneficiaryName),
-      photoCell,
+      val(inst.latitude),
+      val(inst.longitude),
+      formatDate(inst.photoDate),
       val(inst.villageGramPanchayat),
       val(inst.block),
       val(inst.assemblyConstituency),
@@ -311,19 +311,21 @@ const generateFormatIIIa = (doc, formData) => {
     ];
   });
 
-  // Column widths tuned to fit 174mm portrait width (sum = 182).
+  // Column widths adjusted for separate lat/long columns
   const columnStyles = {
-    0: { cellWidth: 10, halign: 'center' },  // S.No.
-    1: { cellWidth: 24 },                    // Exact location (land mark)
-    2: { cellWidth: 26 },                    // Photographs (lat/long/date + image)
-    3: { cellWidth: 20 },                    // Village & Gram Panchayat
-    4: { cellWidth: 15 },                    // Block
-    5: { cellWidth: 19 },                    // Assembly constituency
-    6: { cellWidth: 17, halign: 'center' },  // Date of Commissioning
-    7: { cellWidth: 12 },                    // Module Serial Number
-    8: { cellWidth: 11 },                    // Battery Serial Number
-    9: { cellWidth: 11 },                    // Luminaire Serial Number
-    10: { cellWidth: 9, halign: 'center' },  // RMS
+    0: { cellWidth: 8, halign: 'center' },   // S.No.
+    1: { cellWidth: 22 },                    // Exact location (land mark)
+    2: { cellWidth: 14, halign: 'center' },  // Latitude
+    3: { cellWidth: 14, halign: 'center' },  // Longitude
+    4: { cellWidth: 14, halign: 'center' },  // Photo Date
+    5: { cellWidth: 18 },                    // Village & Gram Panchayat
+    6: { cellWidth: 13 },                    // Block
+    7: { cellWidth: 17 },                    // Assembly constituency
+    8: { cellWidth: 14, halign: 'center' },  // Date of Commissioning
+    9: { cellWidth: 11 },                    // Module Serial Number
+    10: { cellWidth: 10 },                   // Battery Serial Number
+    11: { cellWidth: 11 },                   // Luminaire Serial Number
+    12: { cellWidth: 8, halign: 'center' },  // RMS
   };
 
   autoTable(doc, {
@@ -332,7 +334,9 @@ const generateFormatIIIa = (doc, formData) => {
     head: [[
       'S. No.',
       'Exact location of installation (land mark)',
-      'Photographs of installations with latitude & longitude including date',
+      'Latitude',
+      'Longitude',
+      'Photo Date',
       'Name of village & Name of Gram Panchayat',
       'Name of Block',
       'Name of assembly constituency',
@@ -342,7 +346,7 @@ const generateFormatIIIa = (doc, formData) => {
       'Luminaire Serial Number',
       'RMS',
     ]],
-    body: body.length ? body : [['', '', '', '', '', '', '', '', '', '', '']],
+    body: body.length ? body : [['', '', '', '', '', '', '', '', '', '', '', '', '']],
     styles: {
       font: FONT,
       fontSize: 7,
@@ -367,25 +371,8 @@ const generateFormatIIIa = (doc, formData) => {
     columnStyles,
     margin: { left: MARGIN, right: MARGIN, top: 22, bottom: 20 },
     // Repeat the header on every page automatically.
+    // Repeat the header on every page automatically.
     showHead: 'everyPage',
-    // Render photo images inside the Photographs column when available.
-    didDrawCell: (data) => {
-      if (data.section !== 'body' || data.column.index !== 2) return;
-      const inst = installations[data.row.index];
-      const img = inst && (inst.photoDataUrl || inst.photo);
-      if (!img) return;
-      try {
-        const pad = 1;
-        const maxW = data.cell.width - pad * 2;
-        const imgH = 12;
-        const imgX = data.cell.x + pad;
-        // place image below the lat/long/date text
-        const imgY = data.cell.y + data.cell.height - imgH - pad;
-        doc.addImage(img, 'PNG', imgX, imgY, maxW, imgH);
-      } catch {
-        /* ignore malformed image data */
-      }
-    },
   });
 
   let afterTableY = doc.lastAutoTable.finalY;
