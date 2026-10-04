@@ -1,0 +1,161 @@
+.ss-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.ss-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  font-size: 1rem;
+  color: #0f172a;
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.ss-trigger:focus {
+  outline: none;
+  border-color: #f59e0b;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.18);
+}
+
+.ss-disabled .ss-trigger {
+  background: #f1f5f9;
+  color: #94a3b8;
+  cursor: default;
+}
+
+.ss-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ss-placeholder {
+  color: #94a3b8;
+}
+
+.ss-caret {
+  flex-shrink: 0;
+  color: #64748b;
+  transition: transform 0.15s;
+}
+
+.ss-caret-open {
+  transform: rotate(180deg);
+}
+
+.ss-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 50;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.18);
+  overflow: hidden;
+}
+
+.ss-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.ss-search-icon {
+  color: #94a3b8;
+  flex-shrink: 0;
+}
+
+.ss-search input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  font-size: 0.95rem;
+  color: #0f172a;
+  background: transparent;
+}
+
+.ss-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 50%;
+  background: #f1f5f9;
+  color: #64748b;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.ss-clear:hover {
+  background: #e2e8f0;
+}
+
+.ss-list {
+  max-height: 240px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.ss-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 11px 14px;
+  border: none;
+  background: transparent;
+  font-size: 0.95rem;
+  color: #0f172a;
+  cursor: pointer;
+  text-align: left;
+}
+
+.ss-option-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ss-hl {
+  background: #fef3c7;
+}
+
+.ss-sel {
+  color: #b45309;
+  font-weight: 600;
+}
+
+.ss-sel svg {
+  color: #f59e0b;
+  flex-shrink: 0;
+}
+
+.ss-empty {
+  padding: 16px 14px;
+  text-align: center;
+  color: #94a3b8;
+  font-size: 0.9rem;
+}
+
+@media (max-width: 520px) {
+  .ss-list {
+    max-height: 200px;
+  }
+}

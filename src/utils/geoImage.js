@@ -41,6 +41,7 @@ export function formatCoord(value, digits = 6) {
 // OpenStreetMap Nominatim API (no key required). Returns an object mapping the
 // caller's semantics:
 //   village  -> address.suburb (falls back to village / hamlet / town / neighbourhood)
+//   block    -> address.city_district (falls back to county / state_district / municipality)
 //   assembly -> address.city   (falls back to town / county / municipality)
 //   state    -> address.state
 // The full Nominatim payload is returned under `raw` so callers can display /
@@ -51,7 +52,7 @@ export function formatCoord(value, digits = 6) {
 // A lower zoom (e.g. 14) makes Nominatim snap to a larger/coarser area, which
 // is why the form previously resolved a different suburb than the debug page.
 export async function reverseGeocode(latitude, longitude) {
-  const empty = { village: '', assembly: '', state: '', display: '', raw: null };
+  const empty = { village: '', block: '', assembly: '', state: '', display: '', raw: null };
   const lat = Number(latitude);
   const lng = Number(longitude);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return empty;
@@ -69,7 +70,10 @@ export async function reverseGeocode(latitude, longitude) {
     return {
       village:
         a.suburb || a.neighbourhood || a.village || a.hamlet ||
-        a.town || a.city_district || a.residential || '',
+        a.town || a.residential || '',
+      block:
+        a.city_district || a.county || a.state_district ||
+        a.municipality || a.suburb || '',
       assembly:
         a.city || a.town || a.municipality || a.county || a.state_district || '',
       state: a.state || '',

@@ -1,10 +1,12 @@
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   CheckCircle2, Send, MapPin, ChevronLeft, ChevronRight, Check,
   FolderOpen, MapPinned, Cpu, ClipboardCheck, AlertCircle, LogOut, UserCircle,
-  Paperclip, Image as ImageIcon, FileText, X, Loader2, Camera,
+  Paperclip, Image as ImageIcon, FileText, X, Loader2, Camera, QrCode,
 } from 'lucide-react';
 import Logo from './Logo';
+import QrScannerModal from './QrScannerModal';
+import SearchableSelect from './SearchableSelect';
 import { emptyInstallation, insertInstallations } from '../utils/installations';
 import {
   fetchWorkOrders,
@@ -100,6 +102,14 @@ const WO_FIELD_TO_CATEGORY = {
   module_serial: 'module',
   battery_serial: 'battery',
   luminaire_serial: 'luminaire',
+};
+
+// Friendly labels for the equipment categories, used in scanner titles and
+// the "not found" messages shown under a field.
+const CATEGORY_LABEL = {
+  module: 'Solar Panel',
+  battery: 'Battery',
+  luminaire: 'Luminaire',
 };
 
 function PublicInstallationForm({ onLogout, initialWorkOrder = '' }) {
@@ -203,6 +213,12 @@ function PublicInstallationForm({ onLogout, initialWorkOrder = '' }) {
   const [showConfirm, setShowConfirm] = useState(false);
   const [serialWarnings, setSerialWarnings] = useState([]);
 
+  // QR scanning for equipment serials. `scanField` holds the field key being
+  // scanned (or null when the scanner is closed). `scanResults` keeps the last
+  // scanned text + match status per field so we can show it below the input.
+  const [scanField, setScanField] = useState(null);
+  const [scanResults, setScanResults] = useState({});
+
   const reviewIndex = STEPS.length; // review is the final "virtual" step
   const isReview = current === reviewIndex;
 
@@ -240,6 +256,25 @@ function PublicInstallationForm({ onLogout, initialWorkOrder = '' }) {
   const update = useCallback((key, value) => {
     setForm((prev) => ({ ...prev, [key]: value }));
   }, []);
+
+  // Called when the QR scanner decodes a code for the given field. We try to
+  // match the scanned text against the available serials for that category.
+  // On a match we set the dropdown value; otherwise we flag it as not found.
+  const handleScanResult = useCallback((fieldKey, rawText) => {
+    const scanned = String(rawText || '').trim();
+    const category = WO_FIELD_TO_CATEGORY[fieldKey];
+    const options = woItems[category] || [];
+    const match = options.find(
+      (it) => String(it.serial).trim().toLowerCase() === scanned.toLowerCase()
+    );
+    if (match) {
+      update(fieldKey, match.serial);
+      setScanResults((prev) => ({ ...prev, [fieldKey]: { text: scanned, found: true } }));
+    } else {
+      setScanResults((prev) => ({ ...prev, [fieldKey]: { text: scanned, found: false } }));
+    }
+    setScanField(null);
+  }, [woItems, update]);
 
   // Select a work order by id. Also stamps its name into the work_order field
   // and clears any equipment serials picked for a previous work order.
@@ -640,6 +675,7 @@ function PublicInstallationForm({ onLogout, initialWorkOrder = '' }) {
                   }}
                   onSetPlace={(place) => {
                     if (place.village) update('village', place.village);
+                    if (place.block) update('block', place.block);
                     if (place.assembly) update('assembly_constituency', place.assembly);
                     if (place.state) update('state', place.state);
                   }}
@@ -688,6 +724,7 @@ function PublicInstallationForm({ onLogout, initialWorkOrder = '' }) {
                     (() => {
                       const category = WO_FIELD_TO_CATEGORY[f.key];
                       const options = woItems[category] || [];
+                      const scan = scanResults[f.key];
                       // Keep the current value visible even if it's the one just
                       // picked (it stays "available" until submit).
                       return (
@@ -697,23 +734,42 @@ function PublicInstallationForm({ onLogout, initialWorkOrder = '' }) {
                             {step.required?.includes(f.key) && <span className="pf-req">*</span>}
                             <span className="pf-count">{options.length} available</span>
                           </label>
-                          <select
-                            id={f.key}
-                            value={form[f.key] ?? ''}
-                            onChange={(e) => update(f.key, e.target.value)}
-                            disabled={woLoading || options.length === 0}
-                          >
-                            <option value="">
-                              {woLoading
-                                ? 'Loading…'
-                                : options.length === 0
-                                  ? 'No serials available'
-                                  : `— Select ${f.label} —`}
-                            </option>
-                            {options.map((it) => (
-                              <option key={it.id} value={it.serial}>{it.serial}</option>
-                            ))}
-                          </select>
+                          <div className="pf-scan-row">
+                            <SearchableSelect
+                              id={f.key}
+                              value={form[f.key] ?? ''}
+                              options={options.map((it) => ({ value: it.serial, label: it.serial }))}
+                              onChange={(val) => update(f.key, val)}
+                              disabled={woLoading || options.length === 0}
+                              placeholder={
+                                woLoading
+                                  ? 'Loading…'
+                                  : options.length === 0
+                                    ? 'No serials available'
+                                    : `— Select ${f.label} —`
+                              }
+                            />
+                            <button
+                              type="button"
+                              className="pf-scan-btn"
+                              onClick={() => setScanField(f.key)}
+                              disabled={woLoading || options.length === 0}
+                              title={`Scan ${CATEGORY_LABEL[category]} QR code`}
+                              aria-label={`Scan ${CATEGORY_LABEL[category]} QR code`}
+                            >
+                              <QrCode size={18} />
+                              <span>Scan</span>
+                            </button>
+                          </div>
+                          {scan && (
+                            <span className={`pf-scan-result ${scan.found ? 'ok' : 'bad'}`}>
+                              {scan.found ? (
+                                <><Check size={14} /> Scanned: {scan.text}</>
+                              ) : (
+                                <><AlertCircle size={14} /> Scanned “{scan.text}” — no such pending {CATEGORY_LABEL[category]} installation item in this list.</>
+                              )}
+                            </span>
+                          )}
                           <span className="pf-help">
                             {f.help} Choices come from work order “{selectedWorkOrder.name}”.
                           </span>
@@ -803,6 +859,15 @@ function PublicInstallationForm({ onLogout, initialWorkOrder = '' }) {
           )}
         </footer>
       </div>
+
+      {/* QR scanner popup */}
+      {scanField && (
+        <QrScannerModal
+          title={`Scan ${CATEGORY_LABEL[WO_FIELD_TO_CATEGORY[scanField]]} code`}
+          onResult={(text) => handleScanResult(scanField, text)}
+          onClose={() => setScanField(null)}
+        />
+      )}
 
       {/* Confirmation popup */}
       {showConfirm && (
@@ -1066,7 +1131,7 @@ function SiteImageField({ file, form, latitude, longitude, onSelect, onClear, on
         const stamped = await stampCoordinatesOnImage(picked, lat, lng, {
           exact_location: form?.exact_location,
           village: place.village || form?.village,
-          block: form?.block,
+          block: place.block || form?.block,
           assembly: place.assembly || form?.assembly_constituency,
           state: place.state || form?.state,
         });
@@ -1108,6 +1173,29 @@ function SiteImageField({ file, form, latitude, longitude, onSelect, onClear, on
     }
   }, [original, coords, form, onSelect]);
 
+  // Auto re-stamp: any textual change to the stamped address fields should be
+  // reflected on the photo without the user hunting for a button. We watch the
+  // specific fields that get burned onto the image and re-stamp (debounced) a
+  // short moment after typing stops. Skips the very first run so we don't
+  // double-stamp right after the initial capture.
+  const stampKey = [
+    form?.exact_location, form?.village, form?.block,
+    form?.assembly_constituency, form?.state,
+  ].join('||');
+  const firstStampRun = useRef(true);
+  useEffect(() => {
+    if (!original || !coords) return undefined;
+    if (firstStampRun.current) {
+      firstStampRun.current = false;
+      return undefined;
+    }
+    const t = setTimeout(() => { restamp(); }, 600);
+    return () => clearTimeout(t);
+    // restamp is intentionally omitted to avoid re-running on busy/status churn;
+    // stampKey captures the only inputs that should trigger a re-stamp.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stampKey, original, coords]);
+
   return (
     <div className="pf-file-field">
       <label>Site Image</label>
@@ -1145,18 +1233,29 @@ function SiteImageField({ file, form, latitude, longitude, onSelect, onClear, on
           />
         </label>
 
-        {original && coords && (
+      </div>
+
+      {original && coords && (
+        <div className="pf-restamp-bar">
+          <div className="pf-restamp-info">
+            <MapPin size={16} />
+            <span>
+              The photo updates automatically when you edit Location, Village,
+              Block, Assembly, or State. You can also update it manually.
+            </span>
+          </div>
           <button
             type="button"
-            className="pf-file-btn pf-file-btn-ghost"
+            className="pf-restamp-btn"
             disabled={busy}
             onClick={restamp}
             title="Re-stamp the photo with the address details entered below"
           >
-            <MapPin size={16} /> Re-stamp with entered details
+            {busy ? <Loader2 size={16} className="pf-spin" /> : <MapPin size={16} />}
+            Re-stamp photo now
           </button>
-        )}
-      </div>
+        </div>
+      )}
 
       {busy && (
         <div className="pf-capture-status">
@@ -1178,6 +1277,7 @@ function SiteImageField({ file, form, latitude, longitude, onSelect, onClear, on
             <div><dt>Latitude</dt><dd>{coords ? formatCoord(coords.lat) : '—'}</dd></div>
             <div><dt>Longitude</dt><dd>{coords ? formatCoord(coords.lng) : '—'}</dd></div>
             <div><dt>Resolved village</dt><dd>{geo?.village || '—'}</dd></div>
+            <div><dt>Resolved block</dt><dd>{geo?.block || '—'}</dd></div>
             <div><dt>Resolved assembly</dt><dd>{geo?.assembly || '—'}</dd></div>
             <div><dt>Resolved state</dt><dd>{geo?.state || '—'}</dd></div>
             <div className="pf-geo-debug-full"><dt>Full address</dt><dd>{geo?.display || '—'}</dd></div>

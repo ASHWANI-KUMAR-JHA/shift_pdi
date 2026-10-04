@@ -179,6 +179,83 @@
   gap: 6px;
 }
 
+/* Equipment serial select + QR scan button */
+.pf-scan-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.pf-scan-row select,
+.pf-scan-row .ss-wrap {
+  flex: 1;
+  min-width: 0;
+}
+
+.pf-scan-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px;
+  border: 1px solid #f59e0b;
+  border-radius: 10px;
+  background: #fffbeb;
+  color: #b45309;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+}
+
+.pf-scan-btn:hover:not(:disabled) {
+  background: #fef3c7;
+  border-color: #d97706;
+}
+
+.pf-scan-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.pf-scan-result {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  line-height: 1.35;
+  padding: 6px 10px;
+  border-radius: 8px;
+}
+
+.pf-scan-result svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.pf-scan-result.ok {
+  color: #15803d;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+}
+
+.pf-scan-result.bad {
+  color: #b91c1c;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+}
+
+@media (max-width: 520px) {
+  .pf-scan-btn span {
+    display: none;
+  }
+
+  .pf-scan-btn {
+    padding: 0 14px;
+  }
+}
+
 .pf-field-full {
   grid-column: 1 / -1;
 }
@@ -761,6 +838,70 @@
 
 .pf-file-btn-ghost {
   background: #f8fafc;
+}
+
+/* Prominent re-stamp bar shown once a photo + coordinates exist. */
+.pf-restamp-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  padding: 12px 14px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 12px;
+}
+
+.pf-restamp-info {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  color: #1e40af;
+  flex: 1;
+  min-width: 220px;
+}
+
+.pf-restamp-info svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.pf-restamp-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 10px;
+  background: #2563eb;
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+  transition: background 0.15s, box-shadow 0.15s, opacity 0.15s;
+}
+
+.pf-restamp-btn:hover:not(:disabled) {
+  background: #1d4ed8;
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.3);
+}
+
+.pf-restamp-btn:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+@media (max-width: 520px) {
+  .pf-restamp-btn {
+    width: 100%;
+    justify-content: center;
+  }
 }
 
 .pf-capture-status {

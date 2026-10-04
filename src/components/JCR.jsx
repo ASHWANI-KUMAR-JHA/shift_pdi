@@ -191,6 +191,30 @@ const JCR = ({ onBack, onLogout }) => {
     return Array.from(set).filter(Boolean).sort((a, b) => a.localeCompare(b));
   }, [workOrders, cachedInstallations]);
 
+  // Map each selectable option (work order name OR any order number) to the
+  // full set of equivalent identifiers for that work order. A work order's
+  // name and its order numbers are interchangeable, so selecting any one of
+  // them must match installations linked by ANY of the group's identifiers.
+  // Without this, picking a work order by *name* found 0 rows because
+  // installations store a free-text `work_order` that is usually an order
+  // number, not the name.
+  const workOrderAliases = useMemo(() => {
+    const map = new Map(); // lowercased identifier -> Set of lowercased aliases
+    for (const wo of workOrders) {
+      const group = new Set();
+      if (wo.name) group.add(String(wo.name).trim().toLowerCase());
+      for (const num of wo.order_numbers || []) {
+        if (num) group.add(String(num).trim().toLowerCase());
+      }
+      for (const key of group) {
+        const existing = map.get(key) || new Set();
+        for (const g of group) existing.add(g);
+        map.set(key, existing);
+      }
+    }
+    return map;
+  }, [workOrders]);
+
   const handleCommonFieldChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
@@ -255,9 +279,17 @@ const JCR = ({ onBack, onLogout }) => {
       // Apply filters
       let filtered = allInstallations;
 
-      // Filter by the selected work orders (dropdown multi-select).
+      // Expand each picked option into ALL equivalent identifiers (work order
+      // name + every order number) so installations linked by any one of them
+      // are matched, regardless of which identifier the user selected.
       if (selectedWorkOrders.length > 0) {
-        const woSet = new Set(selectedWorkOrders.map(w => w.toLowerCase().trim()));
+        const woSet = new Set();
+        for (const w of selectedWorkOrders) {
+          const key = String(w).toLowerCase().trim();
+          woSet.add(key);
+          const aliases = workOrderAliases.get(key);
+          if (aliases) for (const a of aliases) woSet.add(a);
+        }
         filtered = filtered.filter(inst =>
           inst.work_order && woSet.has(String(inst.work_order).toLowerCase().trim())
         );
@@ -292,22 +324,23 @@ const JCR = ({ onBack, onLogout }) => {
     } finally {
       setLoadingInstallations(false);
     }
-  }, [filterWorkOrder, filterLocation, selectedWorkOrders, cachedInstallations]);
+  }, [filterWorkOrder, filterLocation, selectedWorkOrders, cachedInstallations, workOrderAliases]);
 
   // Import selected installations into JCR form
   const handleImportInstallations = useCallback((selectedIds) => {
-    const selected = availableInstallations.filter(inst => 
-      selectedIds.includes(inst.id)
+    const idSet = new Set(selectedIds.map(String));
+    const selected = availableInstallations.filter(inst =>
+      idSet.has(String(inst.id))
     );
-    
+
     if (selected.length === 0) {
       setFilterMessage({ type: 'error', text: 'No installations selected to import.' });
       return;
     }
 
-    // Map installation records to JCR installation format
-    const imported = selected.map((inst, idx) => ({
-      serialNo: formData.installations.length + idx + 1,
+    // Map installation records to JCR installation format. `serialNo` is not
+    // assigned here; it is set during the merge step below.
+    const mapped = selected.map((inst) => ({
       beneficiaryName: inst.exact_location || '',
       latitude: inst.latitude || '',
       longitude: inst.longitude || '',
@@ -322,18 +355,47 @@ const JCR = ({ onBack, onLogout }) => {
       rms: inst.rms || 'YES',
     }));
 
-    setFormData(prev => ({
-      ...prev,
-      installations: [...prev.installations, ...imported],
-      systemsInThisJCR: (prev.installations.length + imported.length).toString(),
-    }));
+    setFormData(prev => {
+      // A row is "empty" if the user hasn't entered any identifying data yet.
+      // These are the placeholder rows auto-generated from the systems count,
+      // so we fill them first before appending any extra imported rows.
+      const isEmptyRow = (row) =>
+        !row.beneficiaryName &&
+        !row.villageGramPanchayat &&
+        !row.block &&
+        !row.moduleSerialNo &&
+        !row.batterySerialNo &&
+        !row.luminaireSerialNo;
 
-    setFilterMessage({ 
-      type: 'success', 
-      text: `✓ Imported ${imported.length} installation(s) into JCR form.` 
+      const existing = [...prev.installations];
+      const remaining = [...mapped];
+
+      // Fill existing empty rows first.
+      for (let i = 0; i < existing.length && remaining.length > 0; i++) {
+        if (isEmptyRow(existing[i])) {
+          existing[i] = { ...remaining.shift(), serialNo: existing[i].serialNo };
+        }
+      }
+
+      // Append whatever is left over.
+      const merged = [...existing, ...remaining].map((row, i) => ({
+        ...row,
+        serialNo: i + 1,
+      }));
+
+      return {
+        ...prev,
+        installations: merged,
+        systemsInThisJCR: merged.length.toString(),
+      };
+    });
+
+    setFilterMessage({
+      type: 'success',
+      text: `✓ Imported ${mapped.length} installation(s) into JCR form.`
     });
     setShowFilters(false);
-  }, [availableInstallations, formData.installations.length]);
+  }, [availableInstallations]);
 
   // Toggle a work order in/out of the multi-select set.
   const toggleWorkOrder = useCallback((wo) => {
@@ -1150,7 +1212,7 @@ const JCR = ({ onBack, onLogout }) => {
                     onClick={() => {
                       const selected = Array.from(
                         document.querySelectorAll('.install-checkbox:checked')
-                      ).map(cb => parseInt(cb.dataset.id));
+                      ).map(cb => cb.dataset.id);
                       handleImportInstallations(selected);
                     }}
                     style={{ marginTop: '12px' }}
