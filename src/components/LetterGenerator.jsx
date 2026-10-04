@@ -473,6 +473,19 @@ function LetterGenerator({ onBack, onLogout }) {
                       <Trash2 size={15} /> Delete
                     </button>
                   )}
+                  <button className="lg-btn" onClick={exportToJSON} title="Export letter as JSON">
+                    <FileJson size={15} /> Export
+                  </button>
+                  <button className="lg-btn" onClick={() => fileInputRef.current?.click()} title="Load letter from JSON">
+                    <Upload size={15} /> Load
+                  </button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".json"
+                    onChange={handleLoadJSON}
+                    style={{ display: 'none' }}
+                  />
                 </div>
               </div>
 
@@ -514,8 +527,69 @@ function LetterGenerator({ onBack, onLogout }) {
               <label className="lg-label">
                 Body <span className="lg-hint">Use {'{{variable}}'} for placeholders</span>
               </label>
+
+              {/* Rich-text formatting toolbar */}
+              <div className="lg-format-bar">
+                <button
+                  type="button"
+                  className="lg-fmt-btn"
+                  onClick={() => applyFormat(MARKERS.bold)}
+                  title="Bold"
+                >
+                  <Bold size={16} />
+                </button>
+                <button
+                  type="button"
+                  className="lg-fmt-btn"
+                  onClick={() => applyFormat(MARKERS.italic)}
+                  title="Italic"
+                >
+                  <Italic size={16} />
+                </button>
+                <button
+                  type="button"
+                  className="lg-fmt-btn"
+                  onClick={() => applyFormat(MARKERS.underline)}
+                  title="Underline"
+                >
+                  <Underline size={16} />
+                </button>
+                <div className="lg-color-wrap">
+                  <button
+                    type="button"
+                    className="lg-fmt-btn"
+                    onClick={() => setShowColors(!showColors)}
+                    title="Text Colour"
+                  >
+                    <Palette size={16} />
+                  </button>
+                  {showColors && (
+                    <div className="lg-color-pop">
+                      {COLOR_PRESETS.map((hex) => (
+                        <button
+                          key={hex}
+                          type="button"
+                          className="lg-swatch"
+                          style={{ backgroundColor: hex }}
+                          title={hex}
+                          onClick={() => applyColor(hex)}
+                        />
+                      ))}
+                      <label className="lg-swatch-custom" title="Custom colour">
+                        <input
+                          type="color"
+                          onChange={(e) => applyColor(e.target.value)}
+                        />
+                        +
+                      </label>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               <textarea
                 className="lg-textarea"
+                ref={bodyRef}
                 value={draft.body}
                 onChange={(e) => setDraft((d) => ({ ...d, body: e.target.value }))}
                 placeholder={'Dear {{customer_name}},\n\nThis is to confirm that your {{product}} installed at {{address}} is covered...'}
@@ -648,9 +722,13 @@ function LetterGenerator({ onBack, onLogout }) {
                   <div className="lg-letter-address">{applyVariables(meta.address, values)}</div>
                 )}
                 {renderedSubject.trim() && (
-                  <div className="lg-letter-subject"><strong>Subject: {renderedSubject}</strong></div>
+                  <div className="lg-letter-subject">
+                    <strong>Subject: <RichText text={renderedSubject} /></strong>
+                  </div>
                 )}
-                <div className="lg-letter-body">{renderedBody}</div>
+                <div className="lg-letter-body">
+                  <RichText text={renderedBody} />
+                </div>
               </div>
             </div>
           </div>
