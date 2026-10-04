@@ -326,7 +326,7 @@ function LetterGenerator({ onBack, onLogout }) {
       doc.setFontSize(7);
       doc.setFont('helvetica', 'normal');
       const p1 = 'web: ';
-      const p2 = 'www.sunfeedsolar.com';
+      const p2 = 'www.sunfeedindia.com';
       const p3 = ' | Contact us at:+91-124-4072847 or email us at: ';
       const p4 = 'info.sunfeed@gmail.com';
       const p5 = ' | CIN: U40300HR2016PTC058410';
@@ -335,7 +335,7 @@ function LetterGenerator({ onBack, onLogout }) {
       doc.setTextColor(0, 0, 0);
       doc.text(p1, cx, footerTextY); cx += doc.getTextWidth(p1);
       doc.setTextColor(26, 115, 232);
-      doc.textWithLink(p2, cx, footerTextY, { url: 'http://www.sunfeedsolar.com' }); cx += doc.getTextWidth(p2);
+      doc.textWithLink(p2, cx, footerTextY, { url: 'http://www.sunfeedindia.com' }); cx += doc.getTextWidth(p2);
       doc.setTextColor(0, 0, 0);
       doc.text(p3, cx, footerTextY); cx += doc.getTextWidth(p3);
       doc.setTextColor(26, 115, 232);
