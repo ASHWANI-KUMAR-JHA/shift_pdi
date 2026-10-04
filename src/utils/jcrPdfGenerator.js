@@ -307,21 +307,23 @@ const generateFormatIIIa = (doc, formData) => {
       val(inst.moduleSerialNo),
       val(inst.batterySerialNo),
       val(inst.luminaireSerialNo),
+      val(inst.rms || 'YES'),
     ];
   });
 
-  // Column widths tuned to fit 174mm portrait width (sum = 174).
+  // Column widths tuned to fit 174mm portrait width (sum = 182).
   const columnStyles = {
     0: { cellWidth: 10, halign: 'center' },  // S.No.
-    1: { cellWidth: 26 },                    // Exact location (land mark)
-    2: { cellWidth: 28 },                    // Photographs (lat/long/date + image)
-    3: { cellWidth: 22 },                    // Village & Gram Panchayat
-    4: { cellWidth: 16 },                    // Block
-    5: { cellWidth: 20 },                    // Assembly constituency
-    6: { cellWidth: 18, halign: 'center' },  // Date of Commissioning
+    1: { cellWidth: 24 },                    // Exact location (land mark)
+    2: { cellWidth: 26 },                    // Photographs (lat/long/date + image)
+    3: { cellWidth: 20 },                    // Village & Gram Panchayat
+    4: { cellWidth: 15 },                    // Block
+    5: { cellWidth: 19 },                    // Assembly constituency
+    6: { cellWidth: 17, halign: 'center' },  // Date of Commissioning
     7: { cellWidth: 12 },                    // Module Serial Number
     8: { cellWidth: 11 },                    // Battery Serial Number
     9: { cellWidth: 11 },                    // Luminaire Serial Number
+    10: { cellWidth: 9, halign: 'center' },  // RMS
   };
 
   autoTable(doc, {
@@ -338,8 +340,9 @@ const generateFormatIIIa = (doc, formData) => {
       'Module Serial Number',
       'Battery Serial Number',
       'Luminaire Serial Number',
+      'RMS',
     ]],
-    body: body.length ? body : [['', '', '', '', '', '', '', '', '', '']],
+    body: body.length ? body : [['', '', '', '', '', '', '', '', '', '', '']],
     styles: {
       font: FONT,
       fontSize: 7,
