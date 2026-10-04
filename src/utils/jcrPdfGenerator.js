@@ -44,6 +44,23 @@ const formatDate = (dateString) => {
 
 const val = (v) => (v === undefined || v === null ? '' : String(v));
 
+// Split a multi-entry field value into individual trimmed lines. Entries may
+// be separated by newlines (preferred) or commas (legacy data). Returns an
+// array of non-empty lines; falls back to a single empty string when blank so
+// callers can still render a placeholder.
+const toLines = (v) => {
+  const s = val(v);
+  if (!s.trim()) return [''];
+  return s
+    .split(/\r?\n|,/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+};
+
+// Join multi-entry values with real newlines so jsPDF / autoTable render each
+// entry on its own line.
+const multiline = (v) => toLines(v).join('\n');
+
 /** Draw the bold, right-aligned "Format-X" tag at the very top-right. */
 const drawFormatTag = (doc, tag, y = 16) => {
   doc.setFont(FONT, 'bold');
@@ -93,18 +110,27 @@ const generateFormatII = (doc, formData, addNewPage = false) => {
   const colonX = MARGIN + 78;
   const valueX = colonX + 4;
 
-  const row = (label, value) => {
+  const row = (label, value, { multi = false } = {}) => {
     doc.setFont(FONT, 'normal');
     doc.setFontSize(11);
     doc.text(label, labelX, y);
     doc.text(':', colonX, y);
-    if (value) doc.text(val(value), valueX, y);
-    y += 11;
+    if (multi) {
+      const lines = toLines(value);
+      if (lines.some(Boolean)) {
+        doc.text(lines, valueX, y, { lineHeightFactor: 1.4 });
+      }
+      // Advance by the number of rendered lines (min one row height).
+      y += Math.max(1, lines.length) * 6.5 + 4.5;
+    } else {
+      if (value) doc.text(val(value), valueX, y);
+      y += 11;
+    }
   };
 
-  row('Name of the district', formData.district);
-  row('Rate Contract No. & date', formData.rateContractNo);
-  row('Work Order No. & date', formData.workOrderNo);
+  row('Name of the district', formData.district, { multi: true });
+  row('Rate Contract No. & date', formData.rateContractNo, { multi: true });
+  row('Work Order No. & date', formData.workOrderNo, { multi: true });
   row('No. of Systems', formData.systemsInThisJCR);
   row('Date of pre-dispatch inspection of material', formatDate(formData.preDispatchInspectionDate));
   row('Date of receipt of material', formatDate(formData.materialReceiptDate));
@@ -154,9 +180,9 @@ const generateFormatIII = (doc, formData) => {
 
   const rows = [
     ['Name of System', val(formData.systemName) || 'Solar Street Lighting System'],
-    ['Name of district', val(formData.district)],
-    ['Rate Contract No. & date', val(formData.rateContractNo)],
-    ['Work order no. & date', val(formData.workOrderNo)],
+    ['Name of district', multiline(formData.district)],
+    ['Rate Contract No. & date', multiline(formData.rateContractNo)],
+    ['Work order no. & date', multiline(formData.workOrderNo)],
     ['Name & address of Supplier', val(formData.supplierName)],
     ['Total Work Order Quantity (nos.)', val(formData.totalWorkOrderQty)],
     ['Date of Supply of Material by the firm', formatDate(formData.materialSupplyDate)],
@@ -194,7 +220,8 @@ const generateFormatIII = (doc, formData) => {
 
   // Certification paragraph inside a full-width bordered box (continuation of the form table).
   const nos = val(formData.systemsInThisJCR) || '…………';
-  const wo = val(formData.workOrderNo) || '………………';
+  // Inside running prose, join multiple work orders with commas for readability.
+  const wo = toLines(formData.workOrderNo).filter(Boolean).join(', ') || '………………';
   const inspDate = formatDate(formData.preDispatchInspectionDate) || '………………';
   const certText =
     `Certified that ${nos} nos. of Solar Street Lighting Systems in reference to work order no. ` +
@@ -262,15 +289,28 @@ const generateFormatIIIa = (doc, formData) => {
   // District ............   Year ............  (single centered line)
   doc.setFont(FONT, 'normal');
   doc.setFontSize(11);
-  const district = val(formData.district) || '.....................';
+  const districtLines = toLines(formData.district);
+  const hasDistrict = districtLines.some(Boolean);
   const year = val(formData.year) || '.............';
-  doc.text(`District  ${district}`, MARGIN + 6, y);
+  doc.text(`District  ${hasDistrict ? districtLines[0] : '.....................'}`, MARGIN + 6, y);
   doc.text(`Year  ${year}`, PAGE_W - MARGIN - 60, y);
   y += 9;
+  // Render any additional district/village entries on their own lines.
+  if (hasDistrict && districtLines.length > 1) {
+    const extra = districtLines.slice(1);
+    doc.text(extra, MARGIN + 6, y, { lineHeightFactor: 1.4 });
+    y += extra.length * 6 + 2;
+  }
 
-  // Work Order + Supplier
-  doc.text(`Work Order No. & date:  ${val(formData.workOrderNo)}`, MARGIN, y);
+  // Work Order + Supplier. Multiple work orders each on their own line.
+  const woLines = toLines(formData.workOrderNo);
+  doc.text(`Work Order No. & date:  ${woLines[0] || ''}`, MARGIN, y);
   y += 6;
+  if (woLines.length > 1) {
+    const extraWo = woLines.slice(1);
+    doc.text(extraWo, MARGIN + 32, y, { lineHeightFactor: 1.4 });
+    y += extraWo.length * 6;
+  }
   const supplierLines = doc.splitTextToSize(
     `Name & address of Supplier of System(s):  ${val(formData.supplierName)}`,
     CONTENT_W

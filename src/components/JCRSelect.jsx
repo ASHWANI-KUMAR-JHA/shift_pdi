@@ -5,6 +5,48 @@ import { fetchWorkOrders } from '../utils/workorders';
 import { fetchInstallations } from '../utils/installations';
 import './JCR.css';
 
+// Convert a date from any register format (DD/MM/YYYY, DD-MM-YYYY, ISO,
+// Excel serial, etc.) into the YYYY-MM-DD that <input type="date"> needs,
+// otherwise the date cells render blank.
+function normalizeDate(value) {
+  if (!value && value !== 0) return '';
+  const raw = String(value).trim();
+  if (!raw) return '';
+
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+
+  if (/^\d{4,6}$/.test(raw)) {
+    const serial = parseInt(raw, 10);
+    if (serial > 59) {
+      const d = new Date(Date.UTC(1899, 11, 30) + serial * 86400000);
+      if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
+    }
+  }
+
+  const dmy = raw.match(/^(\d{1,4})[/.\-](\d{1,2})[/.\-](\d{1,4})$/);
+  if (dmy) {
+    let [, a, b, c] = dmy;
+    let day, month, year;
+    if (a.length === 4) {
+      year = a; month = b; day = c;
+    } else {
+      day = a; month = b; year = c;
+      if (year.length === 2) year = `20${year}`;
+    }
+    const dd = day.padStart(2, '0');
+    const mm = month.padStart(2, '0');
+    if (+mm >= 1 && +mm <= 12 && +dd >= 1 && +dd <= 31) {
+      return `${year}-${mm}-${dd}`;
+    }
+  }
+
+  const parsed = new Date(raw);
+  if (!isNaN(parsed.getTime())) return parsed.toISOString().split('T')[0];
+
+  return '';
+}
+
 // Map a raw installation DB record into the JCR installation row shape used by
 // InstallationTable.
 function toJcrRow(inst, index) {
@@ -13,11 +55,11 @@ function toJcrRow(inst, index) {
     beneficiaryName: inst.exact_location || '',
     latitude: inst.latitude || '',
     longitude: inst.longitude || '',
-    photoDate: inst.photo_date || inst.commissioning_date || '',
+    photoDate: normalizeDate(inst.photo_date || inst.commissioning_date),
     villageGramPanchayat: inst.village || '',
     block: inst.block || '',
     assemblyConstituency: inst.assembly_constituency || '',
-    commissioningDate: inst.commissioning_date || '',
+    commissioningDate: normalizeDate(inst.commissioning_date),
     moduleSerialNo: inst.module_serial || '',
     batterySerialNo: inst.battery_serial || '',
     luminaireSerialNo: inst.luminaire_serial || '',

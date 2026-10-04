@@ -9,6 +9,56 @@ import { fetchWorkOrders } from '../utils/workorders';
 import { getPendingJCRImport, clearPendingJCRImport } from '../utils/jcrDataTransfer';
 import './JCR.css';
 
+// Convert a date value from any of the formats the installation register
+// stores (DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY, ISO timestamps, Excel serial
+// numbers, or already-correct YYYY-MM-DD) into the strict YYYY-MM-DD string
+// that <input type="date"> requires. Without this the date inputs render
+// blank even though the data is present. Returns '' when it can't parse.
+const normalizeDate = (value) => {
+  if (!value && value !== 0) return '';
+  const raw = String(value).trim();
+  if (!raw) return '';
+
+  // Already in YYYY-MM-DD (optionally with a time component).
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+
+  // Excel serial date number (days since 1899-12-30).
+  if (/^\d{4,6}$/.test(raw)) {
+    const serial = parseInt(raw, 10);
+    if (serial > 59) {
+      const d = new Date(Date.UTC(1899, 11, 30) + serial * 86400000);
+      if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
+    }
+  }
+
+  // DD/MM/YYYY, DD-MM-YYYY or DD.MM.YYYY (also handles M/D or 2-digit years).
+  const dmy = raw.match(/^(\d{1,4})[/.\-](\d{1,2})[/.\-](\d{1,4})$/);
+  if (dmy) {
+    let [, a, b, c] = dmy;
+    let day, month, year;
+    if (a.length === 4) {
+      // YYYY/MM/DD
+      year = a; month = b; day = c;
+    } else {
+      // DD/MM/YYYY
+      day = a; month = b; year = c;
+      if (year.length === 2) year = `20${year}`;
+    }
+    const dd = day.padStart(2, '0');
+    const mm = month.padStart(2, '0');
+    if (+mm >= 1 && +mm <= 12 && +dd >= 1 && +dd <= 31) {
+      return `${year}-${mm}-${dd}`;
+    }
+  }
+
+  // Last resort: let the Date parser try (handles things like "Jan 29 2026").
+  const parsed = new Date(raw);
+  if (!isNaN(parsed.getTime())) return parsed.toISOString().split('T')[0];
+
+  return '';
+};
+
 const JCR = ({ onBack, onLogout }) => {
   // Common fields state
   const [formData, setFormData] = useState({
@@ -84,11 +134,11 @@ const JCR = ({ onBack, onLogout }) => {
         beneficiaryName: inst.exact_location || '',
         latitude: inst.latitude || '',
         longitude: inst.longitude || '',
-        photoDate: inst.photo_date || inst.commissioning_date || '',
+        photoDate: normalizeDate(inst.photo_date || inst.commissioning_date),
         villageGramPanchayat: inst.village || '',
         block: inst.block || '',
         assemblyConstituency: inst.assembly_constituency || '',
-        commissioningDate: inst.commissioning_date || '',
+        commissioningDate: normalizeDate(inst.commissioning_date),
         moduleSerialNo: inst.module_serial || '',
         batterySerialNo: inst.battery_serial || '',
         luminaireSerialNo: inst.luminaire_serial || '',
@@ -219,6 +269,20 @@ const JCR = ({ onBack, onLogout }) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
+  // The Work Order No. field supports BOTH checkbox multi-select and free text.
+  // `formData.workOrderNo` is the comma-separated source of truth; the typed
+  // value is split into individual work orders which mirror into the "Load
+  // Installation Data" filter so the same selection is used everywhere.
+  const handleWorkOrderNoChange = (value) => {
+    setFormData(prev => ({ ...prev, workOrderNo: value }));
+    const parts = value
+      .split(/\r?\n|,/)
+      .map(s => s.trim())
+      .filter(Boolean);
+    setSelectedWorkOrders(parts);
+    setShowFilters(true);
+  };
+
   const handleInstallationChange = (index, field, value) => {
     setFormData(prev => ({
       ...prev,
@@ -344,11 +408,11 @@ const JCR = ({ onBack, onLogout }) => {
       beneficiaryName: inst.exact_location || '',
       latitude: inst.latitude || '',
       longitude: inst.longitude || '',
-      photoDate: inst.photo_date || inst.commissioning_date || '',
+      photoDate: normalizeDate(inst.photo_date || inst.commissioning_date),
       villageGramPanchayat: inst.village || '',
       block: inst.block || '',
       assemblyConstituency: inst.assembly_constituency || '',
-      commissioningDate: inst.commissioning_date || '',
+      commissioningDate: normalizeDate(inst.commissioning_date),
       moduleSerialNo: inst.module_serial || '',
       batterySerialNo: inst.battery_serial || '',
       luminaireSerialNo: inst.luminaire_serial || '',
@@ -397,12 +461,26 @@ const JCR = ({ onBack, onLogout }) => {
     setShowFilters(false);
   }, [availableInstallations]);
 
-  // Toggle a work order in/out of the multi-select set.
+  // Toggle a work order in/out of the multi-select set. Keep the Project
+  // Information Work Order field in sync: it mirrors ALL selected work orders
+  // as a comma-separated string so both places always agree.
   const toggleWorkOrder = useCallback((wo) => {
-    setSelectedWorkOrders(prev =>
-      prev.includes(wo) ? prev.filter(w => w !== wo) : [...prev, wo]
-    );
+    setSelectedWorkOrders(prev => {
+      const next = prev.includes(wo) ? prev.filter(w => w !== wo) : [...prev, wo];
+      setFormData(f => ({ ...f, workOrderNo: next.join('\n') }));
+      return next;
+    });
   }, []);
+
+  // Whenever the selected work order(s) change and installations are cached,
+  // auto-load the matching installation rows so the filter results reflect the
+  // current selection without an extra click.
+  useEffect(() => {
+    if (selectedWorkOrders.length > 0 && cachedInstallations.length > 0) {
+      handleLoadInstallations();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedWorkOrders, cachedInstallations]);
 
   const handleSaveDraft = () => {
     const draftId = currentDraft || `draft_${Date.now()}`;
@@ -784,33 +862,69 @@ const JCR = ({ onBack, onLogout }) => {
             </div>
 
             <div className="form-field">
-              <ComboboxWithHistory
-                fieldId="jcr.district"
+              <label className="combobox-label">
+                District / Block / Village <span className="required-star">*</span>
+              </label>
+              <textarea
                 value={formData.district}
-                onChange={(value) => handleCommonFieldChange('district', value)}
-                label="District / Block / Village"
-                placeholder="e.g., AMBALA (BLOCK: NARAINGARH, VILLAGE: KANJALA)"
+                onChange={(e) => handleCommonFieldChange('district', e.target.value)}
+                placeholder={'One per line:\nAMBALA (BLOCK: NARAINGARH, VILLAGE: KANJALA)\nPANCHKULA (BLOCK: BARWALA, VILLAGE: RAIPUR)'}
+                className="filter-input"
+                style={{ minHeight: '72px', resize: 'vertical' }}
+                rows={3}
                 required
               />
             </div>
 
             <div className="form-field">
-              <ComboboxWithHistory
-                fieldId="jcr.rateContractNo"
+              <label className="combobox-label">Rate Contract No. &amp; Date</label>
+              <textarea
                 value={formData.rateContractNo}
-                onChange={(value) => handleCommonFieldChange('rateContractNo', value)}
-                label="Rate Contract No. & Date"
-                placeholder="e.g., 119/HR/RC/E-5/2025-26/15124 dated 29.01.2026"
+                onChange={(e) => handleCommonFieldChange('rateContractNo', e.target.value)}
+                placeholder={'One per line:\n119/HR/RC/E-5/2025-26/15124 dated 29.01.2026'}
+                className="filter-input"
+                style={{ minHeight: '72px', resize: 'vertical' }}
+                rows={3}
               />
             </div>
 
-            <div className="form-field">
-              <ComboboxWithHistory
-                fieldId="jcr.workOrderNo"
+            <div className="form-field full-width">
+              <label className="combobox-label">
+                Work Order No. & Date <span className="required-star">*</span>
+                <span className="wo-select-count">
+                  {selectedWorkOrders.length > 0 ? ` · ${selectedWorkOrders.length} selected` : ''}
+                </span>
+                {loadingWorkOrders && <span className="wo-select-count"> · loading…</span>}
+              </label>
+
+              {/* Pick one or more work orders. Selections sync with the Load
+                  Installation Data filter below. */}
+              <div className="wo-multiselect">
+                {workOrderOptions.length === 0 && !loadingWorkOrders && (
+                  <p className="filter-info" style={{ margin: 0 }}>No work orders found.</p>
+                )}
+                {workOrderOptions.map((wo) => (
+                  <label key={wo} className="wo-option">
+                    <input
+                      type="checkbox"
+                      checked={selectedWorkOrders.includes(wo)}
+                      onChange={() => toggleWorkOrder(wo)}
+                    />
+                    <span>{wo}</span>
+                  </label>
+                ))}
+              </div>
+
+              {/* Free-text entry for custom work order numbers not in the list.
+                  Put each work order on its own line — they render on separate
+                  lines in the PDF. */}
+              <textarea
                 value={formData.workOrderNo}
-                onChange={(value) => handleCommonFieldChange('workOrderNo', value)}
-                label="Work Order No. & Date"
-                placeholder="e.g., DNRE/2025-2026/10521 DATED: 18/02/2026"
+                onChange={(e) => handleWorkOrderNoChange(e.target.value)}
+                placeholder={'Or type work order no(s), one per line:\nDNRE/2025-2026/10521\nDNRE/2025-2026/10522'}
+                className="filter-input"
+                style={{ marginTop: '8px', minHeight: '72px', resize: 'vertical' }}
+                rows={3}
                 required
               />
             </div>
