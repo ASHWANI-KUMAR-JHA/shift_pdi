@@ -13,6 +13,18 @@ function QrScannerModal({ title = 'Scan code', onResult, onClose }) {
   const [status, setStatus] = useState('starting'); // starting | scanning | error
   const [error, setError] = useState('');
 
+  // Keep the latest callbacks in a ref so the camera effect can run exactly
+  // once on mount. Depending on the callbacks directly caused the effect to
+  // tear down and restart the camera on every parent re-render (the parent
+  // passes inline arrow functions), and restarting html5-qrcode mid-flight
+  // crashes it.
+  const onResultRef = useRef(onResult);
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onResultRef.current = onResult;
+    onCloseRef.current = onClose;
+  }, [onResult, onClose]);
+
   useEffect(() => {
     let cancelled = false;
     const html5 = new Html5Qrcode(regionId.current, { verbose: false });
@@ -35,7 +47,7 @@ function QrScannerModal({ title = 'Scan code', onResult, onClose }) {
         .stop()
         .catch(() => {})
         .finally(() => {
-          if (!cancelled) onResult(String(decodedText || '').trim());
+          if (!cancelled) onResultRef.current?.(String(decodedText || '').trim());
         });
     };
 
@@ -57,16 +69,24 @@ function QrScannerModal({ title = 'Scan code', onResult, onClose }) {
     return () => {
       cancelled = true;
       const inst = scannerRef.current;
-      if (inst) {
-        inst
-          .stop()
-          .catch(() => {})
-          .finally(() => {
-            try { inst.clear(); } catch { /* ignore */ }
-          });
+      if (!inst) return;
+      // Only stop if the scanner is actually running; calling stop() on an
+      // already-stopped/never-started instance throws.
+      const isScanning =
+        typeof inst.getState === 'function' ? inst.getState() === 2 /* SCANNING */ : true;
+      const done = () => {
+        try { inst.clear(); } catch { /* ignore */ }
+      };
+      if (isScanning) {
+        inst.stop().then(done).catch(done);
+      } else {
+        done();
       }
     };
-  }, [onResult]);
+    // Run once on mount — callbacks are read from refs so this never needs to
+    // re-run (which would restart and crash the camera).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="qr-overlay" onClick={onClose}>
