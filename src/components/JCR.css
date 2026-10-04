@@ -843,3 +843,43 @@
     min-width: 0;
   }
 }
+
+/* Work order multi-select dropdown (JCR fetch way #2) */
+.wo-multiselect {
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid #d1d5db;
+  border-radius: 0.5rem;
+  padding: 0.5rem;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.wo-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.5rem;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.wo-option:hover {
+  background: #f1f5f9;
+}
+
+.wo-option input {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.wo-select-count {
+  font-weight: 500;
+  color: #2563eb;
+  font-size: 0.8125rem;
+}

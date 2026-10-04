@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Search, RefreshCw, Filter } from 'lucide-react';
 import ComboboxWithHistory from './ComboboxWithHistory';
 import InstallationTable from './InstallationTable';
 import { saveJCRDraft, loadJCRDraft, getAllJCRDrafts, deleteJCRDraft } from '../utils/jcrStorage';
 import { generateJCRPDF, generateJCRPreview } from '../utils/jcrPdfGenerator';
 import { fetchInstallations } from '../utils/installations';
+import { fetchWorkOrders } from '../utils/workorders';
 import { getPendingJCRImport, clearPendingJCRImport } from '../utils/jcrDataTransfer';
 import './JCR.css';
 
@@ -58,6 +59,12 @@ const JCR = ({ onBack, onLogout }) => {
   const [filterLocation, setFilterLocation] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [filterMessage, setFilterMessage] = useState(null);
+
+  // Work order multi-select state
+  const [workOrders, setWorkOrders] = useState([]);
+  const [loadingWorkOrders, setLoadingWorkOrders] = useState(false);
+  const [selectedWorkOrders, setSelectedWorkOrders] = useState([]);
+  const [cachedInstallations, setCachedInstallations] = useState([]);
 
   // PDF preview state
   const [previewUrl, setPreviewUrl] = useState(null);
@@ -145,6 +152,45 @@ const JCR = ({ onBack, onLogout }) => {
     }
   }, [formData.systemsInThisJCR, formData.installationCompleteDate]);
 
+  // Load work orders (and cache all installations) for the dropdown fetch mode.
+  const loadWorkOrders = useCallback(async () => {
+    setLoadingWorkOrders(true);
+    try {
+      const [wos, insts] = await Promise.all([
+        fetchWorkOrders(),
+        fetchInstallations(),
+      ]);
+      setWorkOrders(wos);
+      setCachedInstallations(insts);
+    } catch (err) {
+      console.error('Failed to load work orders:', err);
+      setFilterMessage({ type: 'error', text: `Failed to load work orders: ${err.message}` });
+    } finally {
+      setLoadingWorkOrders(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadWorkOrders();
+  }, [loadWorkOrders]);
+
+  // Build the list of selectable work orders by combining the work_orders
+  // table (names + order numbers) with any work_order values present on the
+  // installation records themselves, so nothing is missed.
+  const workOrderOptions = useMemo(() => {
+    const set = new Set();
+    for (const wo of workOrders) {
+      if (wo.name) set.add(String(wo.name).trim());
+      for (const num of wo.order_numbers || []) {
+        if (num) set.add(String(num).trim());
+      }
+    }
+    for (const inst of cachedInstallations) {
+      if (inst.work_order) set.add(String(inst.work_order).trim());
+    }
+    return Array.from(set).filter(Boolean).sort((a, b) => a.localeCompare(b));
+  }, [workOrders, cachedInstallations]);
+
   const handleCommonFieldChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
@@ -193,38 +239,51 @@ const JCR = ({ onBack, onLogout }) => {
     }
   };
 
-  // Load installations from database with filters
+  // Load installations from database with filters.
+  // Two fetch paths are honored together:
+  //   1. The selected work orders from the dropdown (multi-select).
+  //   2. The free-text Work Order / Location filters.
   const handleLoadInstallations = useCallback(async () => {
     setLoadingInstallations(true);
     setFilterMessage(null);
     try {
-      // Fetch all installations
-      const allInstallations = await fetchInstallations();
+      // Reuse the cached installations if available; otherwise fetch fresh.
+      const allInstallations = cachedInstallations.length > 0
+        ? cachedInstallations
+        : await fetchInstallations();
       
       // Apply filters
       let filtered = allInstallations;
+
+      // Filter by the selected work orders (dropdown multi-select).
+      if (selectedWorkOrders.length > 0) {
+        const woSet = new Set(selectedWorkOrders.map(w => w.toLowerCase().trim()));
+        filtered = filtered.filter(inst =>
+          inst.work_order && woSet.has(String(inst.work_order).toLowerCase().trim())
+        );
+      }
       
       if (filterWorkOrder.trim()) {
         const woQuery = filterWorkOrder.toLowerCase().trim();
         filtered = filtered.filter(inst => 
-          inst.work_order && inst.work_order.toLowerCase().includes(woQuery)
+          inst.work_order && String(inst.work_order).toLowerCase().includes(woQuery)
         );
       }
       
       if (filterLocation.trim()) {
         const locQuery = filterLocation.toLowerCase().trim();
         filtered = filtered.filter(inst => 
-          (inst.exact_location && inst.exact_location.toLowerCase().includes(locQuery)) ||
-          (inst.village && inst.village.toLowerCase().includes(locQuery)) ||
-          (inst.block && inst.block.toLowerCase().includes(locQuery)) ||
-          (inst.assembly_constituency && inst.assembly_constituency.toLowerCase().includes(locQuery))
+          (inst.exact_location && String(inst.exact_location).toLowerCase().includes(locQuery)) ||
+          (inst.village && String(inst.village).toLowerCase().includes(locQuery)) ||
+          (inst.block && String(inst.block).toLowerCase().includes(locQuery)) ||
+          (inst.assembly_constituency && String(inst.assembly_constituency).toLowerCase().includes(locQuery))
         );
       }
       
       setAvailableInstallations(filtered);
       setFilterMessage({ 
         type: 'success', 
-        text: `Found ${filtered.length} installation(s) matching your filters.` 
+        text: `Found ${filtered.length} installation(s) matching your selection.` 
       });
       
     } catch (err) {
@@ -233,7 +292,7 @@ const JCR = ({ onBack, onLogout }) => {
     } finally {
       setLoadingInstallations(false);
     }
-  }, [filterWorkOrder, filterLocation]);
+  }, [filterWorkOrder, filterLocation, selectedWorkOrders, cachedInstallations]);
 
   // Import selected installations into JCR form
   const handleImportInstallations = useCallback((selectedIds) => {
@@ -275,6 +334,13 @@ const JCR = ({ onBack, onLogout }) => {
     });
     setShowFilters(false);
   }, [availableInstallations, formData.installations.length]);
+
+  // Toggle a work order in/out of the multi-select set.
+  const toggleWorkOrder = useCallback((wo) => {
+    setSelectedWorkOrders(prev =>
+      prev.includes(wo) ? prev.filter(w => w !== wo) : [...prev, wo]
+    );
+  }, []);
 
   const handleSaveDraft = () => {
     const draftId = currentDraft || `draft_${Date.now()}`;
@@ -932,8 +998,46 @@ const JCR = ({ onBack, onLogout }) => {
           {showFilters && (
             <div className="filter-panel">
               <p className="filter-info">
-                Load installation data from the Installation Register by filtering on Work Order Number and/or Location.
+                Load installation data from the Installation Register. You can either:<br/>
+                <strong>Way #1:</strong> Select one or more Work Orders from the dropdown below, OR<br/>
+                <strong>Way #2:</strong> Type into the text filters (Work Order Number / Location).
               </p>
+
+              {/* Way #2: Work order multi-select dropdown */}
+              <div className="form-field full-width">
+                <label>
+                  Select Work Order(s)
+                  <span className="wo-select-count">
+                    {selectedWorkOrders.length > 0 ? ` · ${selectedWorkOrders.length} selected` : ''}
+                  </span>
+                  {loadingWorkOrders && <span className="wo-select-count"> · loading…</span>}
+                </label>
+                <div className="wo-multiselect">
+                  {workOrderOptions.length === 0 && !loadingWorkOrders && (
+                    <p className="filter-info" style={{ margin: 0 }}>No work orders found.</p>
+                  )}
+                  {workOrderOptions.map((wo) => (
+                    <label key={wo} className="wo-option">
+                      <input
+                        type="checkbox"
+                        checked={selectedWorkOrders.includes(wo)}
+                        onChange={() => toggleWorkOrder(wo)}
+                      />
+                      <span>{wo}</span>
+                    </label>
+                  ))}
+                </div>
+                {selectedWorkOrders.length > 0 && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-small"
+                    onClick={() => setSelectedWorkOrders([])}
+                    style={{ marginTop: '8px' }}
+                  >
+                    Clear selected work orders
+                  </button>
+                )}
+              </div>
               
               <div className="form-grid">
                 <div className="form-field">
