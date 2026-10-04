@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { ArrowLeft, LogOut, Save, Trash2, FileText, Download, RefreshCw, Plus } from 'lucide-react';
+import { ArrowLeft, LogOut, Save, Trash2, FileText, Download, RefreshCw, Plus, Bold, Italic, Underline, Palette, FileJson, Upload } from 'lucide-react';
 import jsPDF from 'jspdf';
 import Logo from './Logo';
 import { getCurrentUser } from '../utils/auth';
@@ -12,9 +12,32 @@ import {
   applyVariables,
   humanizeVariable,
 } from '../utils/letterTemplates';
+import { wrapSelection, MARKERS, colorMarkers, parseRichText } from '../utils/richText';
 import './LetterGenerator.css';
 
 const BLANK = { id: null, name: '', subject: '', body: '' };
+
+// Preset colours offered in the formatting toolbar.
+const COLOR_PRESETS = ['#dc2626', '#2563eb', '#16a34a', '#7c3aed', '#ca8a04', '#16a34a', '#000000'];
+
+// Render markup (**bold**, //italic//, __underline__, {color:#..|txt}) as
+// styled spans for the live preview.
+function RichText({ text }) {
+  const segments = parseRichText(text);
+  return segments.map((s, idx) => (
+    <span
+      key={idx}
+      style={{
+        fontWeight: s.bold ? 700 : undefined,
+        fontStyle: s.italic ? 'italic' : undefined,
+        textDecoration: s.underline ? 'underline' : undefined,
+        color: s.color || undefined,
+      }}
+    >
+      {s.text}
+    </span>
+  ));
+}
 
 function LetterGenerator({ onBack, onLogout }) {
   const [templates, setTemplates] = useState([]);
@@ -35,6 +58,11 @@ function LetterGenerator({ onBack, onLogout }) {
     showAddress: true,
     address: '',
   });
+
+  // Rich text formatting state
+  const [showColors, setShowColors] = useState(false);
+  const bodyRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   const handleMetaChange = useCallback((field, value) => {
     setMeta((prev) => ({ ...prev, [field]: value }));
@@ -103,6 +131,91 @@ function LetterGenerator({ onBack, onLogout }) {
     setDraft(BLANK);
     setValues({});
     setStatus('');
+  }, []);
+
+  // Apply a formatting marker to the currently selected text in the body.
+  // Falls back to inserting empty markers at the caret if nothing is selected.
+  const applyFormat = useCallback((marker) => {
+    const el = bodyRef.current;
+    if (!el) return;
+    const start = el.selectionStart ?? el.value.length;
+    const end = el.selectionEnd ?? el.value.length;
+    const { text, selectionStart, selectionEnd } = wrapSelection(
+      el.value, start, end, marker.prefix, marker.suffix
+    );
+    setDraft((d) => ({ ...d, body: text }));
+    // Restore selection after React re-renders the textarea.
+    requestAnimationFrame(() => {
+      el.focus();
+      el.setSelectionRange(selectionStart, selectionEnd);
+    });
+  }, []);
+
+  const applyColor = useCallback((hex) => {
+    applyFormat(colorMarkers(hex));
+    setShowColors(false);
+  }, [applyFormat]);
+
+  // Export the full letter — template content, optional meta blocks, and the
+  // filled-in variable values — as a portable JSON file. Loading it back
+  // restores everything exactly, including formatting markup.
+  const exportToJSON = useCallback(() => {
+    const payload = {
+      type: 'sunfeed-letter',
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      template: {
+        name: draft.name,
+        subject: draft.subject,
+        body: draft.body,
+      },
+      meta,
+      values,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const fileName = (draft.name || 'letter').replace(/[^\w-]+/g, '_').toLowerCase();
+    a.download = `${fileName}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    setStatus('Letter exported as JSON.');
+  }, [draft, meta, values]);
+
+  // Restore a letter from a previously exported JSON file.
+  const handleLoadJSON = useCallback((e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(reader.result);
+        if (data.type !== 'sunfeed-letter' || !data.template) {
+          throw new Error('Not a valid Sunfeed letter file.');
+        }
+        setSelectedId('');
+        setDraft({
+          id: null,
+          name: data.template.name || '',
+          subject: data.template.subject || '',
+          body: data.template.body || '',
+        });
+        if (data.meta && typeof data.meta === 'object') {
+          setMeta((prev) => ({ ...prev, ...data.meta }));
+        }
+        setValues(data.values && typeof data.values === 'object' ? data.values : {});
+        setStatus(`Loaded letter from "${file.name}".`);
+      } catch (err) {
+        setStatus(`Load failed: ${err.message}`);
+      }
+    };
+    reader.onerror = () => setStatus('Load failed: could not read file.');
+    reader.readAsText(file);
+    // Reset so the same file can be chosen again later.
+    e.target.value = '';
   }, []);
 
   const handleSave = useCallback(async () => {
