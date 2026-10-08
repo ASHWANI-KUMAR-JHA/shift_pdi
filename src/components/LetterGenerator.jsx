@@ -64,6 +64,21 @@ function LetterGenerator({ onBack, onLogout }) {
   const bodyRef = useRef(null);
   const fileInputRef = useRef(null);
 
+  // Watermark state
+  const [watermark, setWatermark] = useState({
+    enabled: false,
+    imageUrl: null,
+    imageName: '',
+    position: { x: 50, y: 50 }, // percentage from top-left
+    size: 30, // percentage of page width
+    opacity: 0.15, // 0-1
+    fixed: false, // whether position is locked
+    aspectRatio: 1, // width / height ratio
+  });
+  const [isDraggingWatermark, setIsDraggingWatermark] = useState(false);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const watermarkInputRef = useRef(null);
+
   const handleMetaChange = useCallback((field, value) => {
     setMeta((prev) => ({ ...prev, [field]: value }));
   }, []);
@@ -156,6 +171,111 @@ function LetterGenerator({ onBack, onLogout }) {
     setShowColors(false);
   }, [applyFormat]);
 
+  // Watermark upload handler
+  const handleWatermarkUpload = useCallback((e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    if (!file.type.startsWith('image/')) {
+      setStatus('Please select an image file (PNG, JPG, etc.)');
+      return;
+    }
+    
+    const reader = new FileReader();
+    reader.onload = () => {
+      // Load image to get dimensions
+      const img = new window.Image();
+      img.onload = () => {
+        const aspectRatio = img.width / img.height;
+        setWatermark(prev => ({
+          ...prev,
+          enabled: true,
+          imageUrl: reader.result,
+          imageName: file.name,
+          position: { x: 50, y: 50 },
+          size: 30,
+          opacity: 0.15,
+          fixed: false,
+          aspectRatio: aspectRatio,
+        }));
+        setStatus(`Watermark "${file.name}" loaded. Drag to position it.`);
+      };
+      img.onerror = () => {
+        setStatus('Failed to load watermark image.');
+      };
+      img.src = reader.result;
+    };
+    reader.onerror = () => setStatus('Failed to load watermark image.');
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  }, []);
+
+  const handleRemoveWatermark = useCallback(() => {
+    setWatermark({
+      enabled: false,
+      imageUrl: null,
+      imageName: '',
+      position: { x: 50, y: 50 },
+      size: 30,
+      opacity: 0.15,
+      fixed: false,
+      aspectRatio: 1,
+    });
+    setStatus('Watermark removed.');
+  }, []);
+
+  const handleWatermarkMouseDown = useCallback((e) => {
+    if (watermark.fixed) return;
+    e.preventDefault();
+    setIsDraggingWatermark(true);
+    
+    const preview = previewRef.current;
+    if (!preview) return;
+    
+    const rect = preview.getBoundingClientRect();
+    const watermarkEl = e.currentTarget;
+    const watermarkRect = watermarkEl.getBoundingClientRect();
+    
+    setDragOffset({
+      x: e.clientX - watermarkRect.left,
+      y: e.clientY - watermarkRect.top,
+    });
+  }, [watermark.fixed]);
+
+  const handleWatermarkMouseMove = useCallback((e) => {
+    if (!isDraggingWatermark || watermark.fixed) return;
+    
+    const preview = previewRef.current;
+    if (!preview) return;
+    
+    const rect = preview.getBoundingClientRect();
+    const x = ((e.clientX - rect.left - dragOffset.x) / rect.width) * 100;
+    const y = ((e.clientY - rect.top - dragOffset.y) / rect.height) * 100;
+    
+    setWatermark(prev => ({
+      ...prev,
+      position: {
+        x: Math.max(0, Math.min(100 - prev.size * 0.5, x)),
+        y: Math.max(0, Math.min(100 - prev.size * 0.5, y)),
+      },
+    }));
+  }, [isDraggingWatermark, watermark.fixed, dragOffset]);
+
+  const handleWatermarkMouseUp = useCallback(() => {
+    setIsDraggingWatermark(false);
+  }, []);
+
+  useEffect(() => {
+    if (isDraggingWatermark) {
+      document.addEventListener('mousemove', handleWatermarkMouseMove);
+      document.addEventListener('mouseup', handleWatermarkMouseUp);
+      return () => {
+        document.removeEventListener('mousemove', handleWatermarkMouseMove);
+        document.removeEventListener('mouseup', handleWatermarkMouseUp);
+      };
+    }
+  }, [isDraggingWatermark, handleWatermarkMouseMove, handleWatermarkMouseUp]);
+
   // Export the full letter — template content, optional meta blocks, and the
   // filled-in variable values — as a portable JSON file. Loading it back
   // restores everything exactly, including formatting markup.
@@ -171,6 +291,15 @@ function LetterGenerator({ onBack, onLogout }) {
       },
       meta,
       values,
+      watermark: watermark.enabled ? {
+        imageName: watermark.imageName,
+        imageUrl: watermark.imageUrl,
+        position: watermark.position,
+        size: watermark.size,
+        opacity: watermark.opacity,
+        fixed: watermark.fixed,
+        aspectRatio: watermark.aspectRatio,
+      } : null,
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -207,6 +336,51 @@ function LetterGenerator({ onBack, onLogout }) {
           setMeta((prev) => ({ ...prev, ...data.meta }));
         }
         setValues(data.values && typeof data.values === 'object' ? data.values : {});
+        
+        // Restore watermark if present
+        if (data.watermark && typeof data.watermark === 'object' && data.watermark.imageUrl) {
+          // Load image to get aspect ratio if not stored
+          const img = new window.Image();
+          img.onload = () => {
+            const aspectRatio = data.watermark.aspectRatio || (img.width / img.height) || 1;
+            setWatermark({
+              enabled: true,
+              imageUrl: data.watermark.imageUrl,
+              imageName: data.watermark.imageName || 'watermark',
+              position: data.watermark.position || { x: 50, y: 50 },
+              size: data.watermark.size || 30,
+              opacity: data.watermark.opacity || 0.15,
+              fixed: data.watermark.fixed || false,
+              aspectRatio: aspectRatio,
+            });
+          };
+          img.onerror = () => {
+            // Fallback if image fails to load
+            setWatermark({
+              enabled: true,
+              imageUrl: data.watermark.imageUrl,
+              imageName: data.watermark.imageName || 'watermark',
+              position: data.watermark.position || { x: 50, y: 50 },
+              size: data.watermark.size || 30,
+              opacity: data.watermark.opacity || 0.15,
+              fixed: data.watermark.fixed || false,
+              aspectRatio: data.watermark.aspectRatio || 1,
+            });
+          };
+          img.src = data.watermark.imageUrl;
+        } else {
+          setWatermark({
+            enabled: false,
+            imageUrl: null,
+            imageName: '',
+            position: { x: 50, y: 50 },
+            size: 30,
+            opacity: 0.15,
+            fixed: false,
+            aspectRatio: 1,
+          });
+        }
+        
         setStatus(`Loaded letter from "${file.name}".`);
       } catch (err) {
         setStatus(`Load failed: ${err.message}`);
@@ -299,6 +473,27 @@ function LetterGenerator({ onBack, onLogout }) {
       console.warn('Could not load logo for PDF:', e);
     }
 
+    // Load watermark image if enabled
+    let watermarkImg = null;
+    if (watermark.enabled && watermark.imageUrl) {
+      try {
+        const img = new window.Image();
+        img.crossOrigin = 'anonymous';
+        await new Promise((resolve, reject) => {
+          img.onload = resolve;
+          img.onerror = reject;
+          img.src = watermark.imageUrl;
+        });
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        canvas.getContext('2d').drawImage(img, 0, 0);
+        watermarkImg = canvas.toDataURL('image/png');
+      } catch (e) {
+        console.warn('Could not load watermark for PDF:', e);
+      }
+    }
+
     const drawHeaderFooter = () => {
       let hy = margin;
       if (logoImg) doc.addImage(logoImg, 'PNG', margin, hy, 45, 15);
@@ -344,10 +539,37 @@ function LetterGenerator({ onBack, onLogout }) {
       doc.text(p5, cx, footerTextY);
     };
 
+    const drawWatermark = () => {
+      if (!watermarkImg) return;
+      
+      // Define the content area (same as where letter content is rendered)
+      const contentAreaTop = margin + 30; // topStart
+      const contentAreaBottom = pageHeight - 24; // bottomLimit
+      const contentAreaHeight = contentAreaBottom - contentAreaTop;
+      const contentAreaWidth = pageWidth - (margin * 2);
+      
+      // Calculate watermark size based on content area width (not full page)
+      const watermarkWidth = (contentAreaWidth * watermark.size) / 100;
+      // Use stored aspect ratio
+      const watermarkHeight = watermarkWidth / watermark.aspectRatio;
+      
+      // Calculate position relative to content area
+      const watermarkX = margin + (contentAreaWidth * watermark.position.x) / 100;
+      const watermarkY = contentAreaTop + (contentAreaHeight * watermark.position.y) / 100;
+      
+      // Set opacity using GState
+      doc.setGState(new doc.GState({ opacity: watermark.opacity }));
+      doc.addImage(watermarkImg, 'PNG', watermarkX, watermarkY, watermarkWidth, watermarkHeight);
+      // Reset opacity for other content
+      doc.setGState(new doc.GState({ opacity: 1.0 }));
+    };
+
     const topStart = margin + 30;
     const bottomLimit = pageHeight - 24;
     let y = topStart;
+    
     drawHeaderFooter();
+    drawWatermark(); // Draw watermark behind all content
 
     // Date (right aligned) — optional
     if (meta.showDate) {
@@ -436,6 +658,7 @@ function LetterGenerator({ onBack, onLogout }) {
         if (y > bottomLimit) {
           doc.addPage();
           drawHeaderFooter();
+          drawWatermark();
           y = topStart;
         }
         y += lineHeight;
@@ -478,6 +701,7 @@ function LetterGenerator({ onBack, onLogout }) {
             if (y > bottomLimit) {
               doc.addPage();
               drawHeaderFooter();
+              drawWatermark();
               y = topStart;
             }
             doc.text(currentLine, currentX, y);
@@ -495,6 +719,7 @@ function LetterGenerator({ onBack, onLogout }) {
           if (y > bottomLimit) {
             doc.addPage();
             drawHeaderFooter();
+            drawWatermark();
             y = topStart;
           }
           doc.text(currentLine, currentX, y);
@@ -509,7 +734,7 @@ function LetterGenerator({ onBack, onLogout }) {
 
     const fileName = (draft.name || 'letter').replace(/[^\w-]+/g, '_').toLowerCase();
     doc.save(`${fileName}.pdf`);
-  }, [renderedSubject, renderedBody, draft.name, meta, values, formatDate]);
+  }, [renderedSubject, renderedBody, draft.name, meta, values, formatDate, watermark]);
 
   const allFilled = variables.every((v) => (values[v] || '').trim() !== '');
 
@@ -770,6 +995,112 @@ function LetterGenerator({ onBack, onLogout }) {
                 </div>
               )}
             </div>
+
+            {/* Watermark Controls */}
+            <div className="lg-panel">
+              <div className="lg-panel-head">
+                <h3>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                    <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                    <polyline points="21 15 16 10 5 21"></polyline>
+                  </svg>
+                  {' '}Watermark
+                </h3>
+                {watermark.enabled && (
+                  <button className="lg-btn danger" onClick={handleRemoveWatermark} title="Remove watermark">
+                    <Trash2 size={15} /> Remove
+                  </button>
+                )}
+              </div>
+              
+              {!watermark.enabled ? (
+                <>
+                  <p className="lg-empty">No watermark added yet.</p>
+                  <button 
+                    className="lg-btn primary" 
+                    onClick={() => watermarkInputRef.current?.click()}
+                    style={{ width: '100%', marginTop: '8px' }}
+                  >
+                    <Upload size={15} /> Upload Watermark Image
+                  </button>
+                  <input
+                    ref={watermarkInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleWatermarkUpload}
+                    style={{ display: 'none' }}
+                  />
+                </>
+              ) : (
+                <>
+                  <div style={{ marginBottom: '12px', fontSize: '12px', color: '#6b7280' }}>
+                    <strong>{watermark.imageName}</strong>
+                  </div>
+                  
+                  <label className="lg-label">
+                    Size <span className="lg-hint">({watermark.size}% of page width)</span>
+                  </label>
+                  <input
+                    type="range"
+                    min="10"
+                    max="80"
+                    value={watermark.size}
+                    onChange={(e) => setWatermark(prev => ({ ...prev, size: Number(e.target.value) }))}
+                    className="lg-slider"
+                    style={{ width: '100%' }}
+                  />
+                  
+                  <label className="lg-label">
+                    Opacity <span className="lg-hint">({Math.round(watermark.opacity * 100)}%)</span>
+                  </label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={watermark.opacity * 100}
+                    onChange={(e) => setWatermark(prev => ({ ...prev, opacity: Number(e.target.value) / 100 }))}
+                    className="lg-slider"
+                    style={{ width: '100%' }}
+                  />
+                  
+                  <div style={{ marginTop: '12px' }}>
+                    <button
+                      className={`lg-btn ${watermark.fixed ? '' : 'primary'}`}
+                      onClick={() => setWatermark(prev => ({ ...prev, fixed: !prev.fixed }))}
+                      style={{ width: '100%' }}
+                    >
+                      {watermark.fixed ? (
+                        <>✓ Position Fixed</>
+                      ) : (
+                        <>📌 Fix Position (drag in preview first)</>
+                      )}
+                    </button>
+                  </div>
+                  
+                  {!watermark.fixed && (
+                    <div className="lg-hint" style={{ marginTop: '8px', textAlign: 'center' }}>
+                      💡 Drag the watermark in the preview to position it
+                    </div>
+                  )}
+                  
+                  <button 
+                    className="lg-btn" 
+                    onClick={() => watermarkInputRef.current?.click()}
+                    style={{ width: '100%', marginTop: '8px' }}
+                  >
+                    <Upload size={15} /> Change Image
+                  </button>
+                  <input
+                    ref={watermarkInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleWatermarkUpload}
+                    style={{ display: 'none' }}
+                  />
+                </>
+              )}
+            </div>
           </div>
 
           {/* Right: live preview */}
@@ -784,37 +1115,85 @@ function LetterGenerator({ onBack, onLogout }) {
               {!allFilled && variables.length > 0 && (
                 <div className="lg-warn">Some variables are still empty — they will render blank.</div>
               )}
-              <div className="lg-letter" ref={previewRef}>
-                <div className="lg-letter-head">
-                  <img src="/SUNFEED LOGO.png" alt="Sunfeed" className="lg-letter-logo" />
-                  <div className="lg-letter-corp">
-                    <strong>Corporate Office:</strong><br />
-                    Sunfeed Ecosolutions India (P) Ltd.<br />
-                    527, 5th Floor, DLF Star Tower, NH-8<br />
-                    Sector-30, Gurugram - 122001 (Haryana)<br />
-                    GSTIN: 06AAWCS8301B1ZC
+              <div className="lg-letter-wrapper">
+                <div className="lg-letter" ref={previewRef} style={{ position: 'relative' }}>
+                {/* Watermark layer - positioned behind content */}
+                {watermark.enabled && watermark.imageUrl && (
+                  <>
+                    <img
+                      src={watermark.imageUrl}
+                      alt="Watermark"
+                      className={`lg-watermark ${watermark.fixed ? 'fixed' : 'draggable'}`}
+                      style={{
+                        position: 'absolute',
+                        left: `${watermark.position.x}%`,
+                        top: `${watermark.position.y}%`,
+                        width: `${watermark.size}%`,
+                        height: 'auto',
+                        opacity: watermark.opacity,
+                        pointerEvents: 'none',
+                        zIndex: 0,
+                        userSelect: 'none',
+                      }}
+                      draggable={false}
+                    />
+                    {/* Draggable overlay - only visible when not fixed */}
+                    {!watermark.fixed && (
+                      <div
+                        className="lg-watermark-handle"
+                        style={{
+                          position: 'absolute',
+                          left: `${watermark.position.x}%`,
+                          top: `${watermark.position.y}%`,
+                          width: `${watermark.size}%`,
+                          height: `${watermark.size / watermark.aspectRatio}%`,
+                          cursor: 'move',
+                          zIndex: 2,
+                          border: '2px dashed rgba(79, 70, 229, 0.6)',
+                          background: 'rgba(79, 70, 229, 0.1)',
+                          boxSizing: 'border-box',
+                        }}
+                        onMouseDown={handleWatermarkMouseDown}
+                        title="Drag to reposition watermark"
+                      />
+                    )}
+                  </>
+                )}
+                
+                {/* Letter content - above watermark */}
+                <div style={{ position: 'relative', zIndex: 1 }}>
+                  <div className="lg-letter-head">
+                    <img src="/SUNFEED LOGO.png" alt="Sunfeed" className="lg-letter-logo" />
+                    <div className="lg-letter-corp">
+                      <strong>Corporate Office:</strong><br />
+                      Sunfeed Ecosolutions India (P) Ltd.<br />
+                      527, 5th Floor, DLF Star Tower, NH-8<br />
+                      Sector-30, Gurugram - 122001 (Haryana)<br />
+                      GSTIN: 06AAWCS8301B1ZC
+                    </div>
                   </div>
-                </div>
-                {meta.showDate && (
-                  <div className="lg-letter-date">Date: {formatDate(meta.date)}</div>
-                )}
-                {meta.showTo && applyVariables(meta.to, values).trim() && (
-                  <div className="lg-letter-to">
-                    To,{'\n'}{applyVariables(meta.to, values)}
+                  {meta.showDate && (
+                    <div className="lg-letter-date">Date: {formatDate(meta.date)}</div>
+                  )}
+                  {meta.showTo && applyVariables(meta.to, values).trim() && (
+                    <div className="lg-letter-to">
+                      To,{'\n'}{applyVariables(meta.to, values)}
+                    </div>
+                  )}
+                  {meta.showAddress && applyVariables(meta.address, values).trim() && (
+                    <div className="lg-letter-address">{applyVariables(meta.address, values)}</div>
+                  )}
+                  {renderedSubject.trim() && (
+                    <div className="lg-letter-subject">
+                      <strong>Subject: <RichText text={renderedSubject} /></strong>
+                    </div>
+                  )}
+                  <div className="lg-letter-body">
+                    <RichText text={renderedBody} />
                   </div>
-                )}
-                {meta.showAddress && applyVariables(meta.address, values).trim() && (
-                  <div className="lg-letter-address">{applyVariables(meta.address, values)}</div>
-                )}
-                {renderedSubject.trim() && (
-                  <div className="lg-letter-subject">
-                    <strong>Subject: <RichText text={renderedSubject} /></strong>
-                  </div>
-                )}
-                <div className="lg-letter-body">
-                  <RichText text={renderedBody} />
                 </div>
               </div>
+              </div> {/* Close lg-letter-wrapper */}
             </div>
           </div>
         </div>
