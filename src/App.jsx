@@ -3,6 +3,7 @@ import Dashboard from './components/Dashboard';
 import LetterGenerator from './components/LetterGenerator';
 import JCR from './components/JCR';
 import JCRSelect from './components/JCRSelect';
+import JCRTracking from './components/JCRTracking';
 import PDI from './components/PDI';
 import WorkOrders from './components/WorkOrders';
 import InstallationRegister from './components/InstallationRegister';
@@ -90,6 +91,11 @@ function App() {
   // Show the JCR Select-by-Work-Order page
   if (currentPage === 'jcrSelect') {
     return <JCRSelect onBack={goHome} onLogout={handleLogout} />;
+  }
+
+  // Show the JCR Tracking (Work Order Book) page
+  if (currentPage === 'jcrTracking') {
+    return <JCRTracking onBack={goHome} onLogout={handleLogout} />;
   }
 
   // Show the PDI (Pre-Dispatch Inspection) page

@@ -45,6 +45,14 @@ const NAV_ITEMS = [
 
 const TOOLS = [
   {
+    key: 'jcrTracking',
+    title: 'JCR Tracking',
+    description: 'Work Order Book - Track all work orders, upload files, add comments and export Excel/PDF.',
+    icon: ClipboardList,
+    accent: 'emerald',
+    tag: 'Tracking',
+  },
+  {
     key: 'workOrders',
     title: 'Work Orders',
     description: 'Create, track and manage equipment serials across every project.',
