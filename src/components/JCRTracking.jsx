@@ -13,6 +13,8 @@ import {
   createJCRWorkOrder,
   updateJCRWorkOrder,
   deleteJCRWorkOrder,
+  deleteAllJCRWorkOrders,
+  upsertJCRWorkOrderByNumber,
   fetchComments,
   addComment,
   deleteComment,
@@ -68,6 +70,23 @@ function JCRTracking({ onBack, onLogout }) {
     }
   }, []);
 
+  const handleDeleteAll = useCallback(async () => {
+    if (workOrders.length === 0) {
+      setMessage({ type: 'success', text: 'There are no work orders to delete.' });
+      return;
+    }
+    if (!window.confirm(`Delete ALL ${workOrders.length} work orders? This cannot be undone.`)) return;
+    // Second confirmation for such a destructive action
+    if (!window.confirm('Are you absolutely sure? Every work order will be permanently removed.')) return;
+    try {
+      await deleteAllJCRWorkOrders();
+      setWorkOrders([]);
+      setMessage({ type: 'success', text: 'All work orders deleted.' });
+    } catch (err) {
+      setError(`Delete all failed: ${err.message}`);
+    }
+  }, [workOrders.length]);
+
   const handleExcelImport = useCallback(async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -90,8 +109,10 @@ function JCRTracking({ onBack, onLogout }) {
       }
 
       let imported = 0;
+      let updated = 0;
       let failed = 0;
       const errors = [];
+      const seenNumbers = new Set();
 
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
@@ -156,6 +177,14 @@ function JCRTracking({ onBack, onLogout }) {
             continue;
           }
 
+          // Skip duplicate WO numbers within the same file (keep first occurrence)
+          const woKey = String(workOrderNo).trim();
+          if (seenNumbers.has(woKey)) {
+            console.log(`Skipping row ${i + 1}: duplicate WO No ${woKey} in file`);
+            continue;
+          }
+          seenNumbers.add(woKey);
+
           console.log(`Importing row ${i + 1}:`, {
             workOrderNo,
             workOrderDate,
@@ -179,12 +208,14 @@ function JCRTracking({ onBack, onLogout }) {
             project_manager: projectManager,
             responsible_person: responsiblePerson,
             status: status,
-            pdi_pending: pdiPending,
+            pdi_pending: status === 'completed' ? false : pdiPending,
             created_by: getCurrentUser()?.name || 'Excel Import',
           };
 
-          await createJCRWorkOrder(newWorkOrder);
-          imported++;
+          // Create or update by WO number so re-importing never creates duplicates
+          const result = await upsertJCRWorkOrderByNumber(newWorkOrder);
+          if (result.action === 'updated') updated++;
+          else imported++;
         } catch (err) {
           failed++;
           errors.push(`Row ${i + 2}: ${err.message}`);
@@ -194,10 +225,14 @@ function JCRTracking({ onBack, onLogout }) {
 
       await loadWorkOrders();
 
-      if (imported > 0) {
-        setMessage({ 
-          type: 'success', 
-          text: `Successfully imported ${imported} work order${imported !== 1 ? 's' : ''}!${failed > 0 ? ` (${failed} failed)` : ''}` 
+      if (imported > 0 || updated > 0) {
+        const parts = [];
+        if (imported > 0) parts.push(`${imported} added`);
+        if (updated > 0) parts.push(`${updated} updated (existing WO no.)`);
+        if (failed > 0) parts.push(`${failed} failed`);
+        setMessage({
+          type: 'success',
+          text: `Import complete: ${parts.join(', ')}.`
         });
       } else {
         setError(`No work orders were imported. ${failed > 0 ? `All ${failed} rows failed.` : 'Please check your Excel file format.'}`);
@@ -540,6 +575,10 @@ function JCRTracking({ onBack, onLogout }) {
               <Plus size={16} />
               Add Work Order
             </button>
+            <button className="btn-delete-all" onClick={handleDeleteAll} disabled={loading || workOrders.length === 0}>
+              <Trash2 size={16} />
+              Delete All
+            </button>
             <button className="btn-refresh" onClick={loadWorkOrders} disabled={loading}>
               <RefreshCw size={16} className={loading ? 'spinning' : ''} />
             </button>
@@ -753,10 +792,15 @@ function JCRTracking({ onBack, onLogout }) {
                 // Completed work orders cannot have PDI pending
                 pdi_pending: newWorkOrder.status === 'completed' ? false : newWorkOrder.pdi_pending,
               };
-              await createJCRWorkOrder(payload);
+              const result = await upsertJCRWorkOrderByNumber(payload);
               await loadWorkOrders();
               setShowAddForm(false);
-              setMessage({ type: 'success', text: 'Work order created successfully!' });
+              setMessage({
+                type: 'success',
+                text: result.action === 'updated'
+                  ? `Work order ${payload.work_order_no} already existed - it was updated.`
+                  : 'Work order created successfully!',
+              });
             } catch (err) {
               setError(`Failed to create work order: ${err.message}`);
             }

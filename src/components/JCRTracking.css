@@ -1875,3 +1875,28 @@
 .summary-card.red.selected {
   box-shadow: 0 0 0 2px #ef4444 inset;
 }
+
+/* Delete All button */
+.btn-delete-all {
+  background: #ef4444;
+  color: white;
+  border: none;
+  padding: 10px 18px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+}
+
+.btn-delete-all:hover:not(:disabled) {
+  background: #dc2626;
+}
+
+.btn-delete-all:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

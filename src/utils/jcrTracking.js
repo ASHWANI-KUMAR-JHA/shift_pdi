@@ -50,6 +50,41 @@ export async function deleteJCRWorkOrder(id) {
   if (error) throw error;
 }
 
+// Delete ALL work orders
+export async function deleteAllJCRWorkOrders() {
+  // Delete every row. Supabase requires a filter, so match any non-null id.
+  const { error } = await supabase
+    .from(JCR_WORK_ORDERS_TABLE)
+    .delete()
+    .not('id', 'is', null);
+
+  if (error) throw error;
+}
+
+// Find a work order by its work_order_no (case/space-insensitive on the stored value)
+export async function findJCRWorkOrderByNumber(workOrderNo) {
+  const { data, error } = await supabase
+    .from(JCR_WORK_ORDERS_TABLE)
+    .select('id')
+    .eq('work_order_no', String(workOrderNo).trim())
+    .limit(1);
+
+  if (error) throw error;
+  return data && data.length > 0 ? data[0] : null;
+}
+
+// Create or update a work order based on work_order_no (prevents duplicates)
+// Returns { action: 'created' | 'updated' }
+export async function upsertJCRWorkOrderByNumber(workOrder) {
+  const existing = await findJCRWorkOrderByNumber(workOrder.work_order_no);
+  if (existing) {
+    await updateJCRWorkOrder(existing.id, workOrder);
+    return { action: 'updated' };
+  }
+  await createJCRWorkOrder(workOrder);
+  return { action: 'created' };
+}
+
 // Fetch comments for a work order
 export async function fetchComments(workOrderId) {
   const { data, error } = await supabase
