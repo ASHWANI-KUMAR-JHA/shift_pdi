@@ -239,87 +239,50 @@ function JCRTracking({ onBack, onLogout }) {
 
   return (
     <div className="jcr-page">
-      <header className="jcr-header">
-        <div className="header-inner">
-          <div className="header-left">
-            <button className="header-btn" onClick={onBack}>
-              <ArrowLeft size={18} />
-              <span>Back</span>
-            </button>
-            <div className="logo">
-              <Logo size="medium" />
-              <div className="logo-text">
-                <h1>Work Order to JCR Tracking</h1>
-                <span className="subtitle">Haryana Renewable Energy Department</span>
-              </div>
-            </div>
-          </div>
-          <div className="header-right">
-            <button className="header-btn" onClick={handleExportExcel}>
-              <FileSpreadsheet size={18} />
-              <span>Export Excel</span>
-            </button>
-            <button className="header-btn" onClick={handleExportPDF}>
-              <FileText size={18} />
-              <span>Export PDF</span>
-            </button>
-            <button className="header-btn logout" onClick={onLogout}>
-              <LogOut size={18} />
-              <span>Logout</span>
-            </button>
+      {/* Header Section - matching screenshot */}
+      <div className="jcr-header-banner">
+        <div className="jcr-header-left">
+          <img src="/SUNFEED LOGO.png" alt="Sunfeed" className="jcr-logo" />
+          <div className="jcr-header-text">
+            <h1>Work Order to JCR Tracking</h1>
+            <p>Haryana Renewable Energy Department – SSL Material Supplied (March 2026)</p>
           </div>
         </div>
-      </header>
+        <div className="jcr-header-right">
+          <button className="jcr-header-btn" onClick={handleExportExcel}>
+            <FileSpreadsheet size={16} />
+            Export Excel
+          </button>
+          <button className="jcr-header-btn" onClick={handleExportPDF}>
+            <FileText size={16} />
+            Export PDF
+          </button>
+          <button className="jcr-header-btn logout-btn" onClick={onLogout}>
+            <LogOut size={16} />
+            Logout
+          </button>
+        </div>
+      </div>
 
       <div className="jcr-body">
-        {/* Summary Cards */}
-        <div className="jcr-summary-grid">
-          <div className="jcr-summary-card total">
-            <div className="card-label">Total Work Orders</div>
-            <div className="card-value">{summary.total}</div>
-          </div>
-          <div className="jcr-summary-card completed">
-            <div className="card-label">Completed</div>
-            <div className="card-value">{summary.completed}</div>
-          </div>
-          <div className="jcr-summary-card in-process">
-            <div className="card-label">In Process</div>
-            <div className="card-value">{summary.in_process}</div>
-          </div>
-          <div className="jcr-summary-card pending">
-            <div className="card-label">Pending</div>
-            <div className="card-value">{summary.pending}</div>
-          </div>
-          <div className="jcr-summary-card lights">
-            <div className="card-label">Total Lights</div>
-            <div className="card-value">{totalLights}</div>
-          </div>
-          <div className="jcr-summary-card value">
-            <div className="card-label">Total Value</div>
-            <div className="card-value">₹{formatCurrency(summary.totalValue)}</div>
-          </div>
-        </div>
-
-        {/* Controls */}
-        <div className="jcr-controls">
+        {/* Controls - compact toolbar */}
+        <div className="jcr-toolbar">
           <div className="search-box">
-            <Search size={18} />
+            <Search size={16} />
             <input
               type="text"
               placeholder="Search work orders..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="search-input"
             />
           </div>
-          <div className="button-group">
+          <div className="toolbar-actions">
             <button className="btn-add" onClick={() => setShowAddForm(true)}>
-              <Plus size={18} />
+              <Plus size={16} />
               Add Work Order
             </button>
             <button className="btn-refresh" onClick={loadWorkOrders} disabled={loading}>
-              <RefreshCw size={18} className={loading ? 'spinning' : ''} />
-              Refresh
+              <RefreshCw size={16} className={loading ? 'spinning' : ''} />
             </button>
           </div>
         </div>
@@ -337,8 +300,8 @@ function JCRTracking({ onBack, onLogout }) {
           </div>
         )}
 
-        {/* Work Orders Table */}
-        <div className="jcr-table-wrapper">
+        {/* Work Orders Table - matching screenshot exactly */}
+        <div className="jcr-table-container">
           <table className="jcr-table">
             <thead>
               <tr>
@@ -418,6 +381,45 @@ function JCRTracking({ onBack, onLogout }) {
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Bottom Summary Cards - matching screenshot */}
+        <div className="jcr-bottom-summary">
+          <div className="summary-card blue">
+            <div className="summary-icon">📋</div>
+            <div className="summary-content">
+              <div className="summary-label">Total Work Orders</div>
+              <div className="summary-value">{summary.total}</div>
+            </div>
+          </div>
+          <div className="summary-card green">
+            <div className="summary-icon">✓</div>
+            <div className="summary-content">
+              <div className="summary-label">Completed</div>
+              <div className="summary-value">{summary.completed}</div>
+            </div>
+          </div>
+          <div className="summary-card orange">
+            <div className="summary-icon">⏱</div>
+            <div className="summary-content">
+              <div className="summary-label">In Progress</div>
+              <div className="summary-value">{summary.in_process}</div>
+            </div>
+          </div>
+          <div className="summary-card red">
+            <div className="summary-icon">⏸</div>
+            <div className="summary-content">
+              <div className="summary-label">Pending</div>
+              <div className="summary-value">{summary.pending}</div>
+            </div>
+          </div>
+          <div className="summary-card purple">
+            <div className="summary-icon">📍</div>
+            <div className="summary-content">
+              <div className="summary-label">Department</div>
+              <div className="summary-value-text">Haryana Renewable Energy Department</div>
+            </div>
+          </div>
         </div>
       </div>
 

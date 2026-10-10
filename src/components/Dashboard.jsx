@@ -34,6 +34,7 @@ import './Dashboard.css';
 
 const NAV_ITEMS = [
   { key: 'dashboard', label: 'Dashboard', icon: LayoutGrid },
+  { key: 'jcrTracking', label: 'JCR Tracking', icon: ClipboardList },
   { key: 'workOrders', label: 'Work Orders', icon: Package },
   { key: 'installations', label: 'Installations', icon: ClipboardList },
   { key: 'jcr', label: 'JCR', icon: FileCheck },
@@ -111,6 +112,7 @@ const TOOLS = [
 ];
 
 const QUICK_ACTIONS = [
+  { key: 'jcrTracking', label: 'JCR Tracking', icon: ClipboardList },
   { key: 'workOrders', label: 'New Work Order', icon: Package },
   { key: 'jcr', label: 'New JCR', icon: FileCheck },
   { key: 'pdi', label: 'Run PDI', icon: ClipboardCheck },
