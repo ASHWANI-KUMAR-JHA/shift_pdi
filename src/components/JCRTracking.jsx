@@ -109,7 +109,8 @@ function JCRTracking({ onBack, onLogout }) {
           };
 
           // Parse Excel row - handle different column name variations
-          const workOrderNo = getColumn(['S. No.', 'S No', 'S.No', 'S NO', 'Work Order No', 'WO No', 'Serial No']);
+          // IMPORTANT: use the actual Work Order number, NOT the serial "S. No." column
+          const workOrderNo = getColumn(['Work Order No.', 'Work Order No', 'WO No.', 'WO No', 'WorkOrderNo', 'Order No']);
           const workOrderDate = parseExcelDate(getColumn(['Work Order Date', 'WO Date', 'Order Date']));
           const clientName = getColumn(['Client Name', 'Client']) || 'SUNFEED ECOSOLUTIONS INDIA PVT LTD';
           const projectName = getColumn(['Project Name', 'Project']) || 'SOLAR STREET LIGHT';
@@ -735,10 +736,30 @@ function JCRTracking({ onBack, onLogout }) {
         <AddWorkOrderModal
           onClose={() => setShowAddForm(false)}
           onSave={async (newWorkOrder) => {
-            await createJCRWorkOrder(newWorkOrder);
-            await loadWorkOrders();
-            setShowAddForm(false);
-            setMessage({ type: 'success', text: 'Work order created successfully!' });
+            try {
+              // Sanitize: empty strings must become null (dates) or proper numbers
+              const payload = {
+                ...newWorkOrder,
+                lights_count:
+                  newWorkOrder.lights_count === '' || newWorkOrder.lights_count == null
+                    ? null
+                    : Number(newWorkOrder.lights_count),
+                work_order_value:
+                  newWorkOrder.work_order_value === '' || newWorkOrder.work_order_value == null
+                    ? 0
+                    : Number(newWorkOrder.work_order_value),
+                start_date: newWorkOrder.start_date || null,
+                completion_date: newWorkOrder.completion_date || null,
+                // Completed work orders cannot have PDI pending
+                pdi_pending: newWorkOrder.status === 'completed' ? false : newWorkOrder.pdi_pending,
+              };
+              await createJCRWorkOrder(payload);
+              await loadWorkOrders();
+              setShowAddForm(false);
+              setMessage({ type: 'success', text: 'Work order created successfully!' });
+            } catch (err) {
+              setError(`Failed to create work order: ${err.message}`);
+            }
           }}
         />
       )}
