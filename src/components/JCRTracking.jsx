@@ -356,7 +356,7 @@ function JCRTracking({ onBack, onLogout }) {
     setMessage({ type: 'success', text: `Exported ${dataToExport.length} work order${dataToExport.length !== 1 ? 's' : ''} to Excel!` });
   }, [filteredWorkOrders, statusFilter]);
 
-  const handleExportPDF = useCallback(() => {
+  const handleExportPDF = useCallback(async () => {
     const dataToExport = filteredWorkOrders;
     if (dataToExport.length === 0) {
       setError('Nothing to export for the current filter.');
@@ -368,7 +368,17 @@ function JCRTracking({ onBack, onLogout }) {
 
     const doc = new jsPDF('landscape', 'mm', 'a4');
     const pageWidth = doc.internal.pageSize.getWidth();
-    
+
+    // Add Sunfeed logo at top-left
+    let tableStartY = 28;
+    const logo = await loadImageAsDataURL('/SUNFEED LOGO.png');
+    if (logo) {
+      const logoH = 16; // mm
+      const logoW = logo.height ? (logo.width / logo.height) * logoH : 30;
+      doc.addImage(logo.dataUrl, 'PNG', 10, 8, logoW, logoH);
+      tableStartY = Math.max(tableStartY, 8 + logoH + 4);
+    }
+
     // Add title
     doc.setFontSize(16);
     doc.setFont('helvetica', 'bold');
@@ -417,7 +427,7 @@ function JCRTracking({ onBack, onLogout }) {
     ]);
 
     autoTable(doc, {
-      startY: 28,
+      startY: tableStartY,
       head: [[
         'S.No', 'WO No', 'WO Date', 'Client', 'Project', 
         'Location', 'Lights', 'Value', 'Start', 'Complete',
@@ -1165,6 +1175,32 @@ function formatDateTime(dateTimeString) {
 function formatCurrency(value) {
   if (!value) return '0';
   return Number(value).toLocaleString('en-IN');
+}
+
+// Load an image from the public folder and return it as a PNG data URL (for jsPDF)
+function loadImageAsDataURL(src) {
+  return new Promise((resolve) => {
+    try {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.naturalWidth;
+          canvas.height = img.naturalHeight;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+          resolve({ dataUrl: canvas.toDataURL('image/png'), width: img.naturalWidth, height: img.naturalHeight });
+        } catch {
+          resolve(null);
+        }
+      };
+      img.onerror = () => resolve(null);
+      img.src = src;
+    } catch {
+      resolve(null);
+    }
+  });
 }
 
 export default JCRTracking;

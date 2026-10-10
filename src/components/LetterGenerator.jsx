@@ -70,8 +70,8 @@ function LetterGenerator({ onBack, onLogout }) {
     imageUrl: null,
     imageName: '',
     position: { x: 50, y: 50 }, // percentage from top-left
-    size: 30, // percentage of page width
-    opacity: 0.15, // 0-1
+    size: 40, // percentage of page width
+    opacity: 0.6, // 0-1
     fixed: false, // whether position is locked
     aspectRatio: 1, // width / height ratio
   });
@@ -193,8 +193,8 @@ function LetterGenerator({ onBack, onLogout }) {
           imageUrl: reader.result,
           imageName: file.name,
           position: { x: 50, y: 50 },
-          size: 30,
-          opacity: 0.15,
+          size: 40,
+          opacity: 0.6,
           fixed: false,
           aspectRatio: aspectRatio,
         }));
@@ -1044,7 +1044,7 @@ function LetterGenerator({ onBack, onLogout }) {
                   <input
                     type="range"
                     min="10"
-                    max="80"
+                    max="60"
                     value={watermark.size}
                     onChange={(e) => setWatermark(prev => ({ ...prev, size: Number(e.target.value) }))}
                     className="lg-slider"
