@@ -859,7 +859,13 @@ function WorkOrderRow({ workOrder, index, isEditing, onEdit, onSave, onCancel, o
       );
       await loadFiles();
     } catch (err) {
-      alert(`Upload failed: ${err.message}`);
+      const msg = String(err?.message || err);
+      const isPolicy = /row-level security|policy|not found|bucket/i.test(msg);
+      alert(
+        isPolicy
+          ? `Upload failed: ${msg}\n\nThe storage bucket "work_order_files" is missing or has no access policy. Run supabase_jcr_file_uploads_fix.sql in the Supabase SQL editor to fix this.`
+          : `Upload failed: ${msg}`
+      );
     } finally {
       setUploading(false);
       e.target.value = '';
