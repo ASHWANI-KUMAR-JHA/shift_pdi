@@ -474,6 +474,12 @@ function JCRTracking({ onBack, onLogout }) {
     setMessage({ type: 'success', text: `Exported ${dataToExport.length} work order${dataToExport.length !== 1 ? 's' : ''} to PDF!` });
   }, [filteredWorkOrders, statusFilter]);
 
+  const handleExit = useCallback(() => {
+    if (window.confirm('Do you want to leave this page and return to the Dashboard?')) {
+      onBack?.();
+    }
+  }, [onBack]);
+
   return (
     <div className="jcr-page">
       {/* Header Section - matching screenshot */}
@@ -493,6 +499,10 @@ function JCRTracking({ onBack, onLogout }) {
           <button className="jcr-header-btn" onClick={handleExportPDF}>
             <FileText size={16} />
             Export PDF
+          </button>
+          <button className="jcr-header-btn" onClick={handleExit}>
+            <ArrowLeft size={16} />
+            Exit
           </button>
           <button className="jcr-header-btn logout-btn" onClick={onLogout}>
             <LogOut size={16} />
