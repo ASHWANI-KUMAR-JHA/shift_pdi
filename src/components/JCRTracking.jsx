@@ -36,6 +36,8 @@ function JCRTracking({ onBack, onLogout }) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [selectedWorkOrder, setSelectedWorkOrder] = useState(null);
   const [showCommentsModal, setShowCommentsModal] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const excelInputRef = useRef(null);
 
   const loadWorkOrders = useCallback(async () => {
     setLoading(true);
@@ -64,6 +66,146 @@ function JCRTracking({ onBack, onLogout }) {
       setError(`Delete failed: ${err.message}`);
     }
   }, []);
+
+  const handleExcelImport = useCallback(async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setImporting(true);
+    setError(null);
+    setMessage(null);
+
+    try {
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data);
+      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(firstSheet);
+
+      if (rows.length === 0) {
+        throw new Error('No data found in Excel file');
+      }
+
+      let imported = 0;
+      let failed = 0;
+      const errors = [];
+
+      for (const row of rows) {
+        try {
+          // Parse Excel row - handle different column name variations
+          const workOrderNo = row['Work Order No'] || row['Work Order No.'] || row['WO No'] || row['S. No.'];
+          const workOrderDate = parseExcelDate(row['Work Order Date'] || row['WO Date']);
+          const clientName = row['Client Name'] || row['Client'] || 'SUNFEED ECOSOLUTIONS INDIA PVT LTD';
+          const projectName = row['Project Name'] || row['Project'] || 'SOLAR STREET LIGHT';
+          const projectLocation = row['Project Location'] || row['Location'] || '';
+          const lightsStr = String(row['Lights'] || '').replace(/[^\d.]/g, '');
+          const lightsCount = lightsStr ? parseFloat(lightsStr) : null;
+          const workOrderValue = parseFloat(String(row['Work Order Value'] || row['WO Value'] || '0').replace(/[^\d.]/g, '')) || 0;
+          const startDate = parseExcelDate(row['Start Date']);
+          const completionDate = parseExcelDate(row['Completion Date']);
+          const projectManager = row['Project Manager'] || row['PM'] || 'UMESH KHATTER';
+          const responsiblePerson = row['Responsible Person'] || row['RP'] || 'UMESH KHATTER';
+          
+          // Parse status
+          let status = 'pending';
+          const statusStr = String(row['Status'] || '').toLowerCase();
+          if (statusStr.includes('complet')) status = 'completed';
+          else if (statusStr.includes('process') || statusStr.includes('progress')) status = 'in_process';
+          else if (statusStr.includes('pend')) status = 'pending';
+
+          // Parse PDI pending
+          const remarks = String(row['Remarks'] || '').toLowerCase();
+          const pdiPending = remarks.includes('pdi') && remarks.includes('pend');
+
+          // Skip if no work order number
+          if (!workOrderNo) {
+            continue;
+          }
+
+          // Create work order
+          const newWorkOrder = {
+            work_order_no: String(workOrderNo),
+            work_order_date: workOrderDate || new Date().toISOString().split('T')[0],
+            client_name: clientName,
+            project_name: projectName,
+            project_location: projectLocation,
+            lights_count: lightsCount,
+            work_order_value: workOrderValue,
+            start_date: startDate,
+            completion_date: completionDate,
+            project_manager: projectManager,
+            responsible_person: responsiblePerson,
+            status: status,
+            pdi_pending: pdiPending,
+            created_by: getCurrentUser()?.name || 'Excel Import',
+          };
+
+          await createJCRWorkOrder(newWorkOrder);
+          imported++;
+        } catch (err) {
+          failed++;
+          errors.push(`Row ${imported + failed}: ${err.message}`);
+        }
+      }
+
+      await loadWorkOrders();
+
+      if (imported > 0) {
+        setMessage({ 
+          type: 'success', 
+          text: `Successfully imported ${imported} work order${imported !== 1 ? 's' : ''}!${failed > 0 ? ` (${failed} failed)` : ''}` 
+        });
+      } else {
+        setError('No work orders were imported. Please check your Excel file format.');
+      }
+
+      if (errors.length > 0 && errors.length <= 5) {
+        console.warn('Import errors:', errors);
+      }
+
+    } catch (err) {
+      setError(`Import failed: ${err.message}`);
+    } finally {
+      setImporting(false);
+      e.target.value = ''; // Reset input
+    }
+  }, [loadWorkOrders]);
+
+  // Helper function to parse Excel dates
+  const parseExcelDate = (value) => {
+    if (!value) return null;
+    
+    // If it's already a valid date string
+    if (typeof value === 'string' && value.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      return value;
+    }
+
+    // If it's a string like "3/18/26" or "18-01-2026"
+    if (typeof value === 'string') {
+      // Handle "IN PROCESS" or empty
+      if (value.toUpperCase() === 'IN PROCESS' || !value.trim()) {
+        return null;
+      }
+
+      // Try to parse various date formats
+      try {
+        const date = new Date(value);
+        if (!isNaN(date.getTime())) {
+          return date.toISOString().split('T')[0];
+        }
+      } catch (e) {
+        return null;
+      }
+    }
+
+    // Excel serial date number (days since 1900-01-01)
+    if (typeof value === 'number') {
+      const excelEpoch = new Date(1900, 0, 1);
+      const date = new Date(excelEpoch.getTime() + (value - 2) * 24 * 60 * 60 * 1000);
+      return date.toISOString().split('T')[0];
+    }
+
+    return null;
+  };
 
   const handleExportExcel = useCallback(() => {
     // Create clean workbook
@@ -277,6 +419,17 @@ function JCRTracking({ onBack, onLogout }) {
             />
           </div>
           <div className="toolbar-actions">
+            <button className="btn-import" onClick={() => excelInputRef.current?.click()} disabled={importing}>
+              <Upload size={16} />
+              {importing ? 'Importing...' : 'Import Excel'}
+            </button>
+            <input
+              ref={excelInputRef}
+              type="file"
+              accept=".xlsx,.xls,.csv"
+              onChange={handleExcelImport}
+              style={{ display: 'none' }}
+            />
             <button className="btn-add" onClick={() => setShowAddForm(true)}>
               <Plus size={16} />
               Add Work Order

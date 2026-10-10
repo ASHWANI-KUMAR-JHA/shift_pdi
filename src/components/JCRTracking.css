@@ -140,6 +140,30 @@
   background: #059669;
 }
 
+.btn-import {
+  background: #3b82f6;
+  color: white;
+  border: none;
+  padding: 10px 18px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+}
+
+.btn-import:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.btn-import:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .btn-refresh {
   background: white;
   color: #4f46e5;
