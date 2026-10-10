@@ -81,6 +81,9 @@ function JCRTracking({ onBack, onLogout }) {
       const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(firstSheet);
 
+      console.log('Excel rows:', rows); // Debug
+      console.log('First row columns:', rows[0] ? Object.keys(rows[0]) : 'No rows');
+
       if (rows.length === 0) {
         throw new Error('No data found in Excel file');
       }
@@ -89,41 +92,80 @@ function JCRTracking({ onBack, onLogout }) {
       let failed = 0;
       const errors = [];
 
-      for (const row of rows) {
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
         try {
+          // Get all possible column names (case-insensitive)
+          const getColumn = (names) => {
+            for (const name of names) {
+              for (const key of Object.keys(row)) {
+                if (key.toLowerCase().trim() === name.toLowerCase().trim()) {
+                  return row[key];
+                }
+              }
+            }
+            return null;
+          };
+
           // Parse Excel row - handle different column name variations
-          const workOrderNo = row['Work Order No'] || row['Work Order No.'] || row['WO No'] || row['S. No.'];
-          const workOrderDate = parseExcelDate(row['Work Order Date'] || row['WO Date']);
-          const clientName = row['Client Name'] || row['Client'] || 'SUNFEED ECOSOLUTIONS INDIA PVT LTD';
-          const projectName = row['Project Name'] || row['Project'] || 'SOLAR STREET LIGHT';
-          const projectLocation = row['Project Location'] || row['Location'] || '';
-          const lightsStr = String(row['Lights'] || '').replace(/[^\d.]/g, '');
+          const workOrderNo = getColumn(['S. No.', 'S No', 'S.No', 'S NO', 'Work Order No', 'WO No', 'Serial No']);
+          const workOrderDate = parseExcelDate(getColumn(['Work Order Date', 'WO Date', 'Order Date']));
+          const clientName = getColumn(['Client Name', 'Client']) || 'SUNFEED ECOSOLUTIONS INDIA PVT LTD';
+          const projectName = getColumn(['Project Name', 'Project']) || 'SOLAR STREET LIGHT';
+          const projectLocation = getColumn(['Project Location', 'Location', 'Site']) || '';
+          
+          // Parse lights count
+          const lightsValue = getColumn(['Lights', 'No of Lights', 'Qty', 'Quantity']);
+          const lightsStr = String(lightsValue || '').replace(/[^\d.]/g, '');
           const lightsCount = lightsStr ? parseFloat(lightsStr) : null;
-          const workOrderValue = parseFloat(String(row['Work Order Value'] || row['WO Value'] || '0').replace(/[^\d.]/g, '')) || 0;
-          const startDate = parseExcelDate(row['Start Date']);
-          const completionDate = parseExcelDate(row['Completion Date']);
-          const projectManager = row['Project Manager'] || row['PM'] || 'UMESH KHATTER';
-          const responsiblePerson = row['Responsible Person'] || row['RP'] || 'UMESH KHATTER';
+          
+          // Parse work order value
+          const woValue = getColumn(['Work Order Value', 'WO Value', 'Value', 'Amount']);
+          const workOrderValue = parseFloat(String(woValue || '0').replace(/[^\d.]/g, '')) || 0;
+          
+          const startDate = parseExcelDate(getColumn(['Start Date', 'Starting Date', 'Commencement Date']));
+          const completionDate = parseExcelDate(getColumn(['Completion Date', 'End Date', 'Target Date']));
+          const projectManager = getColumn(['Project Manager', 'PM', 'Manager']) || 'UMESH KHATTER';
+          const responsiblePerson = getColumn(['Responsible Person', 'RP', 'Coordinator']) || 'UMESH KHATTER';
           
           // Parse status
           let status = 'pending';
-          const statusStr = String(row['Status'] || '').toLowerCase();
-          if (statusStr.includes('complet')) status = 'completed';
-          else if (statusStr.includes('process') || statusStr.includes('progress')) status = 'in_process';
-          else if (statusStr.includes('pend')) status = 'pending';
+          const statusValue = getColumn(['Status', 'Project Status', 'Work Status']);
+          if (statusValue) {
+            const statusStr = String(statusValue).toLowerCase();
+            if (statusStr.includes('complet')) status = 'completed';
+            else if (statusStr.includes('process') || statusStr.includes('progress')) status = 'in_process';
+            else if (statusStr.includes('pend')) status = 'pending';
+          }
 
           // Parse PDI pending
-          const remarks = String(row['Remarks'] || '').toLowerCase();
+          const remarks = String(getColumn(['Remarks', 'Remark', 'Notes', 'Comments']) || '').toLowerCase();
           const pdiPending = remarks.includes('pdi') && remarks.includes('pend');
 
           // Skip if no work order number
-          if (!workOrderNo) {
+          if (!workOrderNo || String(workOrderNo).trim() === '') {
+            console.log(`Skipping row ${i + 1}: No work order number`);
             continue;
           }
 
+          // Skip if work order number is "Total" or similar
+          if (String(workOrderNo).toLowerCase().includes('total')) {
+            console.log(`Skipping row ${i + 1}: Total row`);
+            continue;
+          }
+
+          console.log(`Importing row ${i + 1}:`, {
+            workOrderNo,
+            workOrderDate,
+            clientName,
+            projectName,
+            lightsCount,
+            status
+          });
+
           // Create work order
           const newWorkOrder = {
-            work_order_no: String(workOrderNo),
+            work_order_no: String(workOrderNo).trim(),
             work_order_date: workOrderDate || new Date().toISOString().split('T')[0],
             client_name: clientName,
             project_name: projectName,
@@ -143,7 +185,8 @@ function JCRTracking({ onBack, onLogout }) {
           imported++;
         } catch (err) {
           failed++;
-          errors.push(`Row ${imported + failed}: ${err.message}`);
+          errors.push(`Row ${i + 2}: ${err.message}`);
+          console.error(`Failed to import row ${i + 1}:`, err);
         }
       }
 
@@ -155,14 +198,14 @@ function JCRTracking({ onBack, onLogout }) {
           text: `Successfully imported ${imported} work order${imported !== 1 ? 's' : ''}!${failed > 0 ? ` (${failed} failed)` : ''}` 
         });
       } else {
-        setError('No work orders were imported. Please check your Excel file format.');
-      }
-
-      if (errors.length > 0 && errors.length <= 5) {
-        console.warn('Import errors:', errors);
+        setError(`No work orders were imported. ${failed > 0 ? `All ${failed} rows failed.` : 'Please check your Excel file format.'}`);
+        if (errors.length > 0) {
+          console.error('Import errors:', errors);
+        }
       }
 
     } catch (err) {
+      console.error('Import error:', err);
       setError(`Import failed: ${err.message}`);
     } finally {
       setImporting(false);
