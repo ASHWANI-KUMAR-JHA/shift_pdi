@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 import Logo from './Logo';
 import { getCurrentUser } from '../utils/auth';
 import {
@@ -13,6 +13,8 @@ import {
   createJCRWorkOrder,
   updateJCRWorkOrder,
   deleteJCRWorkOrder,
+  deleteAllJCRWorkOrders,
+  upsertJCRWorkOrderByNumber,
   fetchComments,
   addComment,
   deleteComment,
@@ -32,6 +34,7 @@ function JCRTracking({ onBack, onLogout }) {
   const [error, setError] = useState(null);
   const [message, setMessage] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
   const [editingId, setEditingId] = useState(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [selectedWorkOrder, setSelectedWorkOrder] = useState(null);
@@ -67,6 +70,23 @@ function JCRTracking({ onBack, onLogout }) {
     }
   }, []);
 
+  const handleDeleteAll = useCallback(async () => {
+    if (workOrders.length === 0) {
+      setMessage({ type: 'success', text: 'There are no work orders to delete.' });
+      return;
+    }
+    if (!window.confirm(`Delete ALL ${workOrders.length} work orders? This cannot be undone.`)) return;
+    // Second confirmation for such a destructive action
+    if (!window.confirm('Are you absolutely sure? Every work order will be permanently removed.')) return;
+    try {
+      await deleteAllJCRWorkOrders();
+      setWorkOrders([]);
+      setMessage({ type: 'success', text: 'All work orders deleted.' });
+    } catch (err) {
+      setError(`Delete all failed: ${err.message}`);
+    }
+  }, [workOrders.length]);
+
   const handleExcelImport = useCallback(async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -89,8 +109,10 @@ function JCRTracking({ onBack, onLogout }) {
       }
 
       let imported = 0;
+      let updated = 0;
       let failed = 0;
       const errors = [];
+      const seenNumbers = new Set();
 
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
@@ -108,7 +130,8 @@ function JCRTracking({ onBack, onLogout }) {
           };
 
           // Parse Excel row - handle different column name variations
-          const workOrderNo = getColumn(['S. No.', 'S No', 'S.No', 'S NO', 'Work Order No', 'WO No', 'Serial No']);
+          // IMPORTANT: use the actual Work Order number, NOT the serial "S. No." column
+          const workOrderNo = getColumn(['Work Order No.', 'Work Order No', 'WO No.', 'WO No', 'WorkOrderNo', 'Order No']);
           const workOrderDate = parseExcelDate(getColumn(['Work Order Date', 'WO Date', 'Order Date']));
           const clientName = getColumn(['Client Name', 'Client']) || 'SUNFEED ECOSOLUTIONS INDIA PVT LTD';
           const projectName = getColumn(['Project Name', 'Project']) || 'SOLAR STREET LIGHT';
@@ -154,6 +177,14 @@ function JCRTracking({ onBack, onLogout }) {
             continue;
           }
 
+          // Skip duplicate WO numbers within the same file (keep first occurrence)
+          const woKey = String(workOrderNo).trim();
+          if (seenNumbers.has(woKey)) {
+            console.log(`Skipping row ${i + 1}: duplicate WO No ${woKey} in file`);
+            continue;
+          }
+          seenNumbers.add(woKey);
+
           console.log(`Importing row ${i + 1}:`, {
             workOrderNo,
             workOrderDate,
@@ -177,12 +208,14 @@ function JCRTracking({ onBack, onLogout }) {
             project_manager: projectManager,
             responsible_person: responsiblePerson,
             status: status,
-            pdi_pending: pdiPending,
+            pdi_pending: status === 'completed' ? false : pdiPending,
             created_by: getCurrentUser()?.name || 'Excel Import',
           };
 
-          await createJCRWorkOrder(newWorkOrder);
-          imported++;
+          // Create or update by WO number so re-importing never creates duplicates
+          const result = await upsertJCRWorkOrderByNumber(newWorkOrder);
+          if (result.action === 'updated') updated++;
+          else imported++;
         } catch (err) {
           failed++;
           errors.push(`Row ${i + 2}: ${err.message}`);
@@ -192,10 +225,14 @@ function JCRTracking({ onBack, onLogout }) {
 
       await loadWorkOrders();
 
-      if (imported > 0) {
-        setMessage({ 
-          type: 'success', 
-          text: `Successfully imported ${imported} work order${imported !== 1 ? 's' : ''}!${failed > 0 ? ` (${failed} failed)` : ''}` 
+      if (imported > 0 || updated > 0) {
+        const parts = [];
+        if (imported > 0) parts.push(`${imported} added`);
+        if (updated > 0) parts.push(`${updated} updated (existing WO no.)`);
+        if (failed > 0) parts.push(`${failed} failed`);
+        setMessage({
+          type: 'success',
+          text: `Import complete: ${parts.join(', ')}.`
         });
       } else {
         setError(`No work orders were imported. ${failed > 0 ? `All ${failed} rows failed.` : 'Please check your Excel file format.'}`);
@@ -250,10 +287,48 @@ function JCRTracking({ onBack, onLogout }) {
     return null;
   };
 
+  const filteredWorkOrders = useMemo(() => {
+    let result = workOrders;
+
+    // Status filter
+    if (statusFilter !== 'all') {
+      result = result.filter(wo => wo.status === statusFilter);
+    }
+
+    // Search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      result = result.filter(wo =>
+        wo.work_order_no.toLowerCase().includes(query) ||
+        wo.project_location.toLowerCase().includes(query) ||
+        wo.client_name.toLowerCase().includes(query) ||
+        wo.project_manager.toLowerCase().includes(query)
+      );
+    }
+
+    return result;
+  }, [workOrders, searchQuery, statusFilter]);
+
+  // Overall summary (all work orders) - used for the filter bar counts
+  const summary = useMemo(() => getJCRSummary(workOrders), [workOrders]);
+
+  // Totals for the currently filtered/visible rows
+  const filteredSummary = useMemo(() => getJCRSummary(filteredWorkOrders), [filteredWorkOrders]);
+  const totalLights = useMemo(() =>
+    filteredWorkOrders.reduce((sum, wo) => sum + (Number(wo.lights_count) || 0), 0)
+  , [filteredWorkOrders]);
+
   const handleExportExcel = useCallback(() => {
+    const dataToExport = filteredWorkOrders;
+    if (dataToExport.length === 0) {
+      setError('Nothing to export for the current filter.');
+      return;
+    }
+    const filterLabel = statusFilter === 'all' ? '' : `_${statusFilter}`;
+
     // Create clean workbook
-    const exportData = workOrders.map(wo => ({
-      'S. No.': workOrders.indexOf(wo) + 1,
+    const exportData = dataToExport.map((wo, idx) => ({
+      'S. No.': idx + 1,
       'Work Order No.': wo.work_order_no,
       'Work Order Date': formatDateForExcel(wo.work_order_date),
       'Client Name': wo.client_name,
@@ -266,7 +341,7 @@ function JCRTracking({ onBack, onLogout }) {
       'Project Manager': wo.project_manager,
       'Responsible Person': wo.responsible_person,
       'Status': wo.status.toUpperCase(),
-      'Remarks': wo.pdi_pending ? 'PDI PENDING' : '',
+      'Remarks': (wo.pdi_pending && wo.status !== 'completed') ? 'PDI PENDING' : '',
     }));
 
     const ws = XLSX.utils.json_to_sheet(exportData);
@@ -293,8 +368,8 @@ function JCRTracking({ onBack, onLogout }) {
     XLSX.utils.book_append_sheet(wb, ws, 'Work Order Book');
     
     // Add totals row
-    const summary = getJCRSummary(workOrders);
-    const totalLights = workOrders.reduce((sum, wo) => sum + (Number(wo.lights_count) || 0), 0);
+    const summary = getJCRSummary(dataToExport);
+    const totalLights = dataToExport.reduce((sum, wo) => sum + (Number(wo.lights_count) || 0), 0);
     
     XLSX.utils.sheet_add_json(ws, [{
       'S. No.': '',
@@ -313,25 +388,44 @@ function JCRTracking({ onBack, onLogout }) {
       'Remarks': '',
     }], { origin: -1, skipHeader: true });
 
-    XLSX.writeFile(wb, `Work_Order_Book_${new Date().toISOString().split('T')[0]}.xlsx`);
-    setMessage({ type: 'success', text: 'Excel exported successfully!' });
-  }, [workOrders]);
+    XLSX.writeFile(wb, `Work_Order_Book${filterLabel}_${new Date().toISOString().split('T')[0]}.xlsx`);
+    setMessage({ type: 'success', text: `Exported ${dataToExport.length} work order${dataToExport.length !== 1 ? 's' : ''} to Excel!` });
+  }, [filteredWorkOrders, statusFilter]);
 
-  const handleExportPDF = useCallback(() => {
+  const handleExportPDF = useCallback(async () => {
+    const dataToExport = filteredWorkOrders;
+    if (dataToExport.length === 0) {
+      setError('Nothing to export for the current filter.');
+      return;
+    }
+    const statusTextMap = { all: 'All', completed: 'Completed', in_process: 'In Progress', pending: 'Pending' };
+    const filterText = statusTextMap[statusFilter] || 'All';
+    const filterLabel = statusFilter === 'all' ? '' : `_${statusFilter}`;
+
     const doc = new jsPDF('landscape', 'mm', 'a4');
     const pageWidth = doc.internal.pageSize.getWidth();
-    
+
+    // Add Sunfeed logo at top-left
+    let tableStartY = 28;
+    const logo = await loadImageAsDataURL('/SUNFEED LOGO.png');
+    if (logo) {
+      const logoH = 16; // mm
+      const logoW = logo.height ? (logo.width / logo.height) * logoH : 30;
+      doc.addImage(logo.dataUrl, 'PNG', 10, 8, logoW, logoH);
+      tableStartY = Math.max(tableStartY, 8 + logoH + 4);
+    }
+
     // Add title
     doc.setFontSize(16);
     doc.setFont('helvetica', 'bold');
-    doc.text('Work Order to JCR Tracking', pageWidth / 2, 15, { align: 'center' });
+    doc.text('Work Order Tracking', pageWidth / 2, 15, { align: 'center' });
     
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
-    doc.text('Haryana Renewable Energy Department – SSL Material Supplied', pageWidth / 2, 22, { align: 'center' });
+    doc.text(`Haryana Renewable Energy Department - SSL Material Supplied  (Filter: ${filterText})`, pageWidth / 2, 22, { align: 'center' });
 
     // Prepare table data
-    const tableData = workOrders.map((wo, index) => [
+    const tableData = dataToExport.map((wo, index) => [
       index + 1,
       wo.work_order_no,
       formatDateForDisplay(wo.work_order_date),
@@ -339,18 +433,18 @@ function JCRTracking({ onBack, onLogout }) {
       wo.project_name,
       wo.project_location,
       wo.lights_count ? `${wo.lights_count} nos` : '',
-      formatCurrency(wo.work_order_value),
+      `Rs. ${formatCurrency(wo.work_order_value)}`,
       formatDateForDisplay(wo.start_date),
       formatDateForDisplay(wo.completion_date),
       wo.project_manager,
       wo.responsible_person,
-      wo.status.toUpperCase(),
-      wo.pdi_pending ? 'PDI PENDING' : '',
+      wo.status.toUpperCase().replace('_', ' '),
+      (wo.pdi_pending && wo.status !== 'completed') ? 'PDI PENDING' : '',
     ]);
 
     // Add summary row
-    const summary = getJCRSummary(workOrders);
-    const totalLights = workOrders.reduce((sum, wo) => sum + (Number(wo.lights_count) || 0), 0);
+    const summary = getJCRSummary(dataToExport);
+    const totalLights = dataToExport.reduce((sum, wo) => sum + (Number(wo.lights_count) || 0), 0);
     tableData.push([
       '',
       '',
@@ -359,7 +453,7 @@ function JCRTracking({ onBack, onLogout }) {
       '',
       'TOTAL',
       `${totalLights} nos`,
-      formatCurrency(summary.totalValue),
+      `Rs. ${formatCurrency(summary.totalValue)}`,
       '',
       '',
       '',
@@ -368,22 +462,33 @@ function JCRTracking({ onBack, onLogout }) {
       '',
     ]);
 
-    doc.autoTable({
-      startY: 28,
+    autoTable(doc, {
+      startY: tableStartY,
       head: [[
         'S.No', 'WO No', 'WO Date', 'Client', 'Project', 
         'Location', 'Lights', 'Value', 'Start', 'Complete',
         'PM', 'RP', 'Status', 'Remarks'
       ]],
       body: tableData,
-      styles: { fontSize: 7, cellPadding: 1.5 },
-      headStyles: { fillColor: [41, 128, 185], fontStyle: 'bold' },
+      styles: { fontSize: 6.5, cellPadding: 1.5, overflow: 'linebreak', valign: 'middle' },
+      headStyles: { fillColor: [41, 128, 185], fontStyle: 'bold', halign: 'center' },
+      tableWidth: 'auto',
+      margin: { left: 6, right: 6 },
       columnStyles: {
-        0: { cellWidth: 8 },
-        1: { cellWidth: 15 },
-        2: { cellWidth: 18 },
-        3: { cellWidth: 35 },
-        7: { halign: 'right' },
+        0: { cellWidth: 9, halign: 'center' },   // S.No
+        1: { cellWidth: 14 },                     // WO No
+        2: { cellWidth: 17 },                     // WO Date
+        3: { cellWidth: 34 },                     // Client
+        4: { cellWidth: 22 },                     // Project
+        5: { cellWidth: 40 },                     // Location
+        6: { cellWidth: 14, halign: 'center' },   // Lights
+        7: { cellWidth: 22, halign: 'right' },    // Value
+        8: { cellWidth: 18 },                     // Start
+        9: { cellWidth: 18 },                     // Complete
+        10: { cellWidth: 24 },                    // PM
+        11: { cellWidth: 24 },                    // RP
+        12: { cellWidth: 18, halign: 'center' },  // Status
+        13: { cellWidth: 18 },                    // Remarks
       },
       didParseCell: function(data) {
         if (data.row.index === tableData.length - 1) {
@@ -397,30 +502,19 @@ function JCRTracking({ onBack, onLogout }) {
     const finalY = doc.lastAutoTable.finalY + 10;
     doc.setFontSize(9);
     doc.setFont('helvetica', 'bold');
-    doc.text(`Total Work Orders: ${summary.total}`, 14, finalY);
-    doc.text(`Completed: ${summary.completed}`, 14, finalY + 6);
-    doc.text(`In Process: ${summary.in_process}`, 14, finalY + 12);
-    doc.text(`Pending: ${summary.pending}`, 14, finalY + 18);
+    doc.text(`Showing: ${filterText}  |  Work Orders: ${summary.total}`, 14, finalY);
+    doc.text(`Completed: ${summary.completed}    In Progress: ${summary.in_process}    Pending: ${summary.pending}`, 14, finalY + 6);
+    doc.text(`Total WO Value: Rs. ${formatCurrency(summary.totalValue)}`, 14, finalY + 12);
 
-    doc.save(`Work_Order_Book_${new Date().toISOString().split('T')[0]}.pdf`);
-    setMessage({ type: 'success', text: 'PDF exported successfully!' });
-  }, [workOrders]);
+    doc.save(`Work_Order_Book${filterLabel}_${new Date().toISOString().split('T')[0]}.pdf`);
+    setMessage({ type: 'success', text: `Exported ${dataToExport.length} work order${dataToExport.length !== 1 ? 's' : ''} to PDF!` });
+  }, [filteredWorkOrders, statusFilter]);
 
-  const filteredWorkOrders = useMemo(() => {
-    if (!searchQuery.trim()) return workOrders;
-    const query = searchQuery.toLowerCase();
-    return workOrders.filter(wo =>
-      wo.work_order_no.toLowerCase().includes(query) ||
-      wo.project_location.toLowerCase().includes(query) ||
-      wo.client_name.toLowerCase().includes(query) ||
-      wo.project_manager.toLowerCase().includes(query)
-    );
-  }, [workOrders, searchQuery]);
-
-  const summary = useMemo(() => getJCRSummary(workOrders), [workOrders]);
-  const totalLights = useMemo(() => 
-    workOrders.reduce((sum, wo) => sum + (Number(wo.lights_count) || 0), 0)
-  , [workOrders]);
+  const handleExit = useCallback(() => {
+    if (window.confirm('Do you want to leave this page and return to the Dashboard?')) {
+      onBack?.();
+    }
+  }, [onBack]);
 
   return (
     <div className="jcr-page">
@@ -429,7 +523,7 @@ function JCRTracking({ onBack, onLogout }) {
         <div className="jcr-header-left">
           <img src="/SUNFEED LOGO.png" alt="Sunfeed" className="jcr-logo" />
           <div className="jcr-header-text">
-            <h1>Work Order to JCR Tracking</h1>
+            <h1>Work Order Tracking</h1>
             <p>Haryana Renewable Energy Department – SSL Material Supplied (March 2026)</p>
           </div>
         </div>
@@ -441,6 +535,10 @@ function JCRTracking({ onBack, onLogout }) {
           <button className="jcr-header-btn" onClick={handleExportPDF}>
             <FileText size={16} />
             Export PDF
+          </button>
+          <button className="jcr-header-btn" onClick={handleExit}>
+            <ArrowLeft size={16} />
+            Exit
           </button>
           <button className="jcr-header-btn logout-btn" onClick={onLogout}>
             <LogOut size={16} />
@@ -477,6 +575,10 @@ function JCRTracking({ onBack, onLogout }) {
               <Plus size={16} />
               Add Work Order
             </button>
+            <button className="btn-delete-all" onClick={handleDeleteAll} disabled={loading || workOrders.length === 0}>
+              <Trash2 size={16} />
+              Delete All
+            </button>
             <button className="btn-refresh" onClick={loadWorkOrders} disabled={loading}>
               <RefreshCw size={16} className={loading ? 'spinning' : ''} />
             </button>
@@ -495,6 +597,37 @@ function JCRTracking({ onBack, onLogout }) {
             <button onClick={() => setError(null)}><X size={16} /></button>
           </div>
         )}
+
+        {/* Status Filter Bar */}
+        <div className="jcr-filter-bar">
+          <button
+            className={`filter-chip all ${statusFilter === 'all' ? 'active' : ''}`}
+            onClick={() => setStatusFilter('all')}
+          >
+            All <span className="chip-count">{summary.total}</span>
+          </button>
+          <button
+            className={`filter-chip completed ${statusFilter === 'completed' ? 'active' : ''}`}
+            onClick={() => setStatusFilter('completed')}
+          >
+            Completed <span className="chip-count">{summary.completed}</span>
+          </button>
+          <button
+            className={`filter-chip in_process ${statusFilter === 'in_process' ? 'active' : ''}`}
+            onClick={() => setStatusFilter('in_process')}
+          >
+            In Progress <span className="chip-count">{summary.in_process}</span>
+          </button>
+          <button
+            className={`filter-chip pending ${statusFilter === 'pending' ? 'active' : ''}`}
+            onClick={() => setStatusFilter('pending')}
+          >
+            Pending <span className="chip-count">{summary.pending}</span>
+          </button>
+          <div className="filter-total">
+            WO Value Total: <strong>₹{formatCurrency(filteredSummary.totalValue)}</strong>
+          </div>
+        </div>
 
         {/* Work Orders Table - matching screenshot exactly */}
         <div className="jcr-table-container">
@@ -529,7 +662,9 @@ function JCRTracking({ onBack, onLogout }) {
               {!loading && filteredWorkOrders.length === 0 && (
                 <tr>
                   <td colSpan="17" className="empty">
-                    {searchQuery ? 'No work orders match your search' : 'No work orders yet. Click "Add Work Order" to create one.'}
+                    {searchQuery || statusFilter !== 'all'
+                      ? 'No work orders match the current filter'
+                      : 'No work orders yet. Click "Add Work Order" to create one.'}
                   </td>
                 </tr>
               )}
@@ -541,7 +676,11 @@ function JCRTracking({ onBack, onLogout }) {
                   isEditing={editingId === wo.id}
                   onEdit={() => setEditingId(wo.id)}
                   onSave={async (updated) => {
-                    await updateJCRWorkOrder(wo.id, updated);
+                    // Completed work orders cannot have PDI pending
+                    const payload = updated.status === 'completed'
+                      ? { ...updated, pdi_pending: false }
+                      : updated;
+                    await updateJCRWorkOrder(wo.id, payload);
                     await loadWorkOrders();
                     setEditingId(null);
                   }}
@@ -563,12 +702,12 @@ function JCRTracking({ onBack, onLogout }) {
                   <td></td>
                   <td><strong>TOTAL</strong></td>
                   <td><strong>{totalLights} nos</strong></td>
-                  <td><strong>₹{formatCurrency(summary.totalValue)}</strong></td>
+                  <td><strong>₹{formatCurrency(filteredSummary.totalValue)}</strong></td>
                   <td></td>
                   <td></td>
                   <td></td>
                   <td></td>
-                  <td><strong>{summary.completed} Completed</strong></td>
+                  <td><strong>{filteredSummary.completed} Completed</strong></td>
                   <td></td>
                   <td></td>
                   <td></td>
@@ -581,28 +720,40 @@ function JCRTracking({ onBack, onLogout }) {
 
         {/* Bottom Summary Cards - matching screenshot */}
         <div className="jcr-bottom-summary">
-          <div className="summary-card blue">
+          <div
+            className={`summary-card blue clickable ${statusFilter === 'all' ? 'selected' : ''}`}
+            onClick={() => setStatusFilter('all')}
+          >
             <div className="summary-icon">📋</div>
             <div className="summary-content">
               <div className="summary-label">Total Work Orders</div>
               <div className="summary-value">{summary.total}</div>
             </div>
           </div>
-          <div className="summary-card green">
+          <div
+            className={`summary-card green clickable ${statusFilter === 'completed' ? 'selected' : ''}`}
+            onClick={() => setStatusFilter(statusFilter === 'completed' ? 'all' : 'completed')}
+          >
             <div className="summary-icon">✓</div>
             <div className="summary-content">
               <div className="summary-label">Completed</div>
               <div className="summary-value">{summary.completed}</div>
             </div>
           </div>
-          <div className="summary-card orange">
+          <div
+            className={`summary-card orange clickable ${statusFilter === 'in_process' ? 'selected' : ''}`}
+            onClick={() => setStatusFilter(statusFilter === 'in_process' ? 'all' : 'in_process')}
+          >
             <div className="summary-icon">⏱</div>
             <div className="summary-content">
               <div className="summary-label">In Progress</div>
               <div className="summary-value">{summary.in_process}</div>
             </div>
           </div>
-          <div className="summary-card red">
+          <div
+            className={`summary-card red clickable ${statusFilter === 'pending' ? 'selected' : ''}`}
+            onClick={() => setStatusFilter(statusFilter === 'pending' ? 'all' : 'pending')}
+          >
             <div className="summary-icon">⏸</div>
             <div className="summary-content">
               <div className="summary-label">Pending</div>
@@ -624,10 +775,35 @@ function JCRTracking({ onBack, onLogout }) {
         <AddWorkOrderModal
           onClose={() => setShowAddForm(false)}
           onSave={async (newWorkOrder) => {
-            await createJCRWorkOrder(newWorkOrder);
-            await loadWorkOrders();
-            setShowAddForm(false);
-            setMessage({ type: 'success', text: 'Work order created successfully!' });
+            try {
+              // Sanitize: empty strings must become null (dates) or proper numbers
+              const payload = {
+                ...newWorkOrder,
+                lights_count:
+                  newWorkOrder.lights_count === '' || newWorkOrder.lights_count == null
+                    ? null
+                    : Number(newWorkOrder.lights_count),
+                work_order_value:
+                  newWorkOrder.work_order_value === '' || newWorkOrder.work_order_value == null
+                    ? 0
+                    : Number(newWorkOrder.work_order_value),
+                start_date: newWorkOrder.start_date || null,
+                completion_date: newWorkOrder.completion_date || null,
+                // Completed work orders cannot have PDI pending
+                pdi_pending: newWorkOrder.status === 'completed' ? false : newWorkOrder.pdi_pending,
+              };
+              const result = await upsertJCRWorkOrderByNumber(payload);
+              await loadWorkOrders();
+              setShowAddForm(false);
+              setMessage({
+                type: 'success',
+                text: result.action === 'updated'
+                  ? `Work order ${payload.work_order_no} already existed - it was updated.`
+                  : 'Work order created successfully!',
+              });
+            } catch (err) {
+              setError(`Failed to create work order: ${err.message}`);
+            }
           }}
         />
       )}
@@ -683,7 +859,13 @@ function WorkOrderRow({ workOrder, index, isEditing, onEdit, onSave, onCancel, o
       );
       await loadFiles();
     } catch (err) {
-      alert(`Upload failed: ${err.message}`);
+      const msg = String(err?.message || err);
+      const isPolicy = /row-level security|policy|not found|bucket/i.test(msg);
+      alert(
+        isPolicy
+          ? `Upload failed: ${msg}\n\nThe storage bucket "work_order_files" is missing or has no access policy. Run supabase_jcr_file_uploads_fix.sql in the Supabase SQL editor to fix this.`
+          : `Upload failed: ${msg}`
+      );
     } finally {
       setUploading(false);
       e.target.value = '';
@@ -717,7 +899,15 @@ function WorkOrderRow({ workOrder, index, isEditing, onEdit, onSave, onCancel, o
         <td><input value={editData.project_manager} onChange={e => setEditData({...editData, project_manager: e.target.value})} /></td>
         <td><input value={editData.responsible_person} onChange={e => setEditData({...editData, responsible_person: e.target.value})} /></td>
         <td>
-          <select value={editData.status} onChange={e => setEditData({...editData, status: e.target.value})}>
+          <select value={editData.status} onChange={e => {
+            const newStatus = e.target.value;
+            setEditData({
+              ...editData,
+              status: newStatus,
+              // When a work order is Completed, PDI is no longer pending
+              pdi_pending: newStatus === 'completed' ? false : editData.pdi_pending,
+            });
+          }}>
             <option value="completed">COMPLETED</option>
             <option value="in_process">IN PROCESS</option>
             <option value="pending">PENDING</option>
@@ -725,7 +915,12 @@ function WorkOrderRow({ workOrder, index, isEditing, onEdit, onSave, onCancel, o
         </td>
         <td>
           <label>
-            <input type="checkbox" checked={editData.pdi_pending} onChange={e => setEditData({...editData, pdi_pending: e.target.checked})} />
+            <input
+              type="checkbox"
+              checked={editData.status === 'completed' ? false : editData.pdi_pending}
+              disabled={editData.status === 'completed'}
+              onChange={e => setEditData({...editData, pdi_pending: e.target.checked})}
+            />
             PDI Pending
           </label>
         </td>
@@ -762,7 +957,7 @@ function WorkOrderRow({ workOrder, index, isEditing, onEdit, onSave, onCancel, o
           {workOrder.status.toUpperCase().replace('_', ' ')}
         </span>
       </td>
-      <td>{workOrder.pdi_pending && <span className="pdi-badge">PDI PENDING</span>}</td>
+      <td>{workOrder.pdi_pending && workOrder.status !== 'completed' && <span className="pdi-badge">PDI PENDING</span>}</td>
       <td>
         <div className="file-cell">
           <button 
@@ -902,7 +1097,14 @@ function AddWorkOrderModal({ onClose, onSave }) {
           <div className="form-row">
             <div className="form-group">
               <label>Status *</label>
-              <select required value={formData.status} onChange={e => setFormData({...formData, status: e.target.value})}>
+              <select required value={formData.status} onChange={e => {
+                const newStatus = e.target.value;
+                setFormData({
+                  ...formData,
+                  status: newStatus,
+                  pdi_pending: newStatus === 'completed' ? false : formData.pdi_pending,
+                });
+              }}>
                 <option value="pending">PENDING</option>
                 <option value="in_process">IN PROCESS</option>
                 <option value="completed">COMPLETED</option>
@@ -910,7 +1112,12 @@ function AddWorkOrderModal({ onClose, onSave }) {
             </div>
             <div className="form-group checkbox-group">
               <label>
-                <input type="checkbox" checked={formData.pdi_pending} onChange={e => setFormData({...formData, pdi_pending: e.target.checked})} />
+                <input
+                  type="checkbox"
+                  checked={formData.status === 'completed' ? false : formData.pdi_pending}
+                  disabled={formData.status === 'completed'}
+                  onChange={e => setFormData({...formData, pdi_pending: e.target.checked})}
+                />
                 PDI Pending
               </label>
             </div>
@@ -1049,6 +1256,32 @@ function formatDateTime(dateTimeString) {
 function formatCurrency(value) {
   if (!value) return '0';
   return Number(value).toLocaleString('en-IN');
+}
+
+// Load an image from the public folder and return it as a PNG data URL (for jsPDF)
+function loadImageAsDataURL(src) {
+  return new Promise((resolve) => {
+    try {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.naturalWidth;
+          canvas.height = img.naturalHeight;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+          resolve({ dataUrl: canvas.toDataURL('image/png'), width: img.naturalWidth, height: img.naturalHeight });
+        } catch {
+          resolve(null);
+        }
+      };
+      img.onerror = () => resolve(null);
+      img.src = src;
+    } catch {
+      resolve(null);
+    }
+  });
 }
 
 export default JCRTracking;
