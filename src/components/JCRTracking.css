@@ -1925,7 +1925,8 @@
 }
 
 /* Bulk delete button styles */
-.btn-bulk-delete {
+.btn-bulk-delete,
+.btn-delete-all {
   background: #ffeded;
   color: #b42330;
   border: 1px solid #ffc7c7;
@@ -1941,7 +1942,8 @@
   white-space: nowrap;
 }
 
-.btn-bulk-delete:hover:not(:disabled) {
+.btn-bulk-delete:hover:not(:disabled),
+.btn-delete-all:hover:not(:disabled) {
   background: #ff4444;
   color: white;
   border-color: #ff4444;
@@ -1949,12 +1951,14 @@
   box-shadow: 0 4px 8px rgba(255, 68, 68, 0.2);
 }
 
-.btn-bulk-delete:disabled {
+.btn-bulk-delete:disabled,
+.btn-delete-all:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-.btn-bulk-delete.btn-delete-active {
+.btn-bulk-delete.btn-delete-active,
+.btn-delete-all.btn-delete-active {
   animation: pulse-delete 0.5s ease-in-out;
   background: #ff4444;
   color: white;
@@ -1966,7 +1970,8 @@
   50% { transform: scale(1.05); }
 }
 
-.btn-bulk-delete .click-indicator {
+.btn-bulk-delete .click-indicator,
+.btn-delete-all .click-indicator {
   display: inline-block;
   margin-left: 4px;
   padding: 2px 6px;

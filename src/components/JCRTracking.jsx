@@ -48,6 +48,11 @@ function JCRTracking({ onBack, onLogout }) {
   const [deleteTimer, setDeleteTimer] = useState(null);
   const [deleting, setDeleting] = useState(false);
 
+  // Delete All state (separate from selected delete)
+  const [deleteAllClickCount, setDeleteAllClickCount] = useState(0);
+  const [deleteAllTimer, setDeleteAllTimer] = useState(null);
+  const [deletingAll, setDeletingAll] = useState(false);
+
   const loadWorkOrders = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -78,20 +83,63 @@ function JCRTracking({ onBack, onLogout }) {
 
   const handleDeleteAll = useCallback(async () => {
     if (workOrders.length === 0) {
-      setMessage({ type: 'success', text: 'There are no work orders to delete.' });
+      setMessage({ type: 'info', text: 'There are no work orders to delete.' });
       return;
     }
-    if (!window.confirm(`Delete ALL ${workOrders.length} work orders? This cannot be undone.`)) return;
-    // Second confirmation for such a destructive action
-    if (!window.confirm('Are you absolutely sure? Every work order will be permanently removed.')) return;
-    try {
-      await deleteAllJCRWorkOrders();
-      setWorkOrders([]);
-      setMessage({ type: 'success', text: 'All work orders deleted.' });
-    } catch (err) {
-      setError(`Delete all failed: ${err.message}`);
+
+    const newCount = deleteAllClickCount + 1;
+    setDeleteAllClickCount(newCount);
+
+    // Clear any existing timer
+    if (deleteAllTimer) {
+      clearTimeout(deleteAllTimer);
     }
-  }, [workOrders.length]);
+
+    // Reset counter after 2 seconds of inactivity
+    const timer = setTimeout(() => {
+      setDeleteAllClickCount(0);
+    }, 2000);
+    setDeleteAllTimer(timer);
+
+    // On third click, show confirmation
+    if (newCount >= 3) {
+      setDeleteAllClickCount(0);
+      clearTimeout(timer);
+
+      const confirmed = window.confirm(
+        `⚠️ DELETE ALL WORK ORDERS?\n\n` +
+        `You are about to permanently delete ALL ${workOrders.length} work order(s).\n\n` +
+        `This will also delete:\n` +
+        `• All comments associated with ALL work orders\n` +
+        `• All files attached to ALL work orders\n` +
+        `• ALL work order data (cannot be recovered)\n\n` +
+        `This action CANNOT be undone!\n\n` +
+        `Click OK to proceed with deletion, or Cancel to abort.`
+      );
+
+      if (!confirmed) return;
+
+      setDeletingAll(true);
+      try {
+        await deleteAllJCRWorkOrders();
+        setWorkOrders([]);
+        setMessage({ type: 'success', text: `✅ Successfully deleted all ${workOrders.length} work orders.` });
+      } catch (err) {
+        setError(`❌ Delete all failed: ${err.message}`);
+      } finally {
+        setDeletingAll(false);
+      }
+    }
+  }, [workOrders.length, deleteAllClickCount, deleteAllTimer]);
+
+  // Clean up timers on unmount
+  useEffect(() => {
+    return () => {
+      if (deleteAllTimer) {
+        clearTimeout(deleteAllTimer);
+      }
+    };
+  }, [deleteAllTimer]);
 
   const handleExcelImport = useCallback(async (e) => {
     const file = e.target.files?.[0];
@@ -697,9 +745,15 @@ function JCRTracking({ onBack, onLogout }) {
               <Plus size={16} />
               Add Work Order
             </button>
-            <button className="btn-delete-all" onClick={handleDeleteAll} disabled={loading || workOrders.length === 0}>
+            <button 
+              className={`btn-delete-all ${deleteAllClickCount > 0 ? 'btn-delete-active' : ''}`}
+              onClick={handleDeleteAll} 
+              disabled={loading || workOrders.length === 0 || deletingAll}
+              title={deleteAllClickCount === 0 ? 'Click 3 times to delete all' : deleteAllClickCount === 1 ? 'Click 2 more times' : 'Click 1 more time'}
+            >
               <Trash2 size={16} />
-              Delete All
+              {deletingAll ? 'Deleting All...' : 'Delete All'}
+              {deleteAllClickCount > 0 && <span className="click-indicator">{deleteAllClickCount}/3</span>}
             </button>
             <button className="btn-refresh" onClick={loadWorkOrders} disabled={loading}>
               <RefreshCw size={16} className={loading ? 'spinning' : ''} />
