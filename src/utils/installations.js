@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { readSheetRows, textToRows } from './spreadsheet';
+import { releaseInstallationWorkOrderItems } from './workorders';
 
 // Table name in Supabase
 export const INSTALLATIONS_TABLE = 'installations';
@@ -191,12 +192,44 @@ export async function updateInstallation(id, row) {
   return data?.[0] || null;
 }
 
+// Set RMS status for many installation records at once.
+export async function setInstallationsRms(ids, rms = 'YES') {
+  const list = (ids || []).filter(Boolean);
+  if (list.length === 0) return { updated: 0 };
+  const { data, error } = await supabase
+    .from(INSTALLATIONS_TABLE)
+    .update({ rms })
+    .in('id', list)
+    .select();
+  if (error) throw error;
+  return { updated: data?.length || 0, data: data || [] };
+}
+
 export async function deleteInstallation(id) {
+  // Load the row first so we can release its work order serials after deletion.
+  const { data: existing } = await supabase
+    .from(INSTALLATIONS_TABLE)
+    .select('work_order, module_serial, battery_serial, luminaire_serial')
+    .eq('id', id)
+    .limit(1);
+  const row = existing?.[0] || null;
+
   const { error } = await supabase
     .from(INSTALLATIONS_TABLE)
     .delete()
     .eq('id', id);
   if (error) throw error;
+
+  // Mark the consumed work order items as available again. Non-fatal: the
+  // installation is already deleted, so a release failure shouldn't surface
+  // as a delete failure.
+  if (row) {
+    try {
+      await releaseInstallationWorkOrderItems(row);
+    } catch (err) {
+      console.warn('Could not release work order items on delete:', err);
+    }
+  }
 }
 
 // Parse pasted tabular data (TSV from Excel / Google Sheets or CSV).

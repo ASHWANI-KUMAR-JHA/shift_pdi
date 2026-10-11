@@ -2,8 +2,14 @@ import { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   ArrowLeft, LogOut, Search, RefreshCw, Download, Printer,
   ChevronDown, X, FileText, AlertCircle, Package,
-  ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Trash2
+  ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Trash2,
+  Pencil, Check, CheckCircle2
 } from 'lucide-react';
+import {
+  updateInstallation,
+  setInstallationsRms,
+  deleteInstallation,
+} from '../utils/installations';
 import Logo from './Logo';
 import {
   fetchRMSNotEnteredRecords,
@@ -43,6 +49,15 @@ function RMSNotEnteredReport({ onBack, onLogout }) {
   const [deleteClickCount, setDeleteClickCount] = useState(0);
   const [deleteTimer, setDeleteTimer] = useState(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Inline edit state
+  const [editingId, setEditingId] = useState(null);
+  const [editDraft, setEditDraft] = useState({});
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState(null);
+
+  // Bulk "mark RMS = YES" state
+  const [markingRms, setMarkingRms] = useState(false);
 
   // Statistics
   const stats = useMemo(() => calculateRMSStats(records), [records]);
@@ -192,9 +207,6 @@ function RMSNotEnteredReport({ onBack, onLogout }) {
 
       setDeleting(true);
       try {
-        // Import deleteInstallation from installations utils
-        const { deleteInstallation } = await import('../utils/installations');
-        
         let deletedCount = 0;
         const failedIds = [];
 
@@ -234,6 +246,81 @@ function RMSNotEnteredReport({ onBack, onLogout }) {
       }
     };
   }, [deleteTimer]);
+
+  // ===== Inline edit =====
+  const startEdit = useCallback((record) => {
+    setEditError(null);
+    setEditingId(record.id);
+    setEditDraft({
+      project_name: record.project_name || '',
+      work_order: record.work_order || '',
+      sno: record.sno || '',
+      exact_location: record.exact_location || '',
+      latitude: record.latitude || '',
+      longitude: record.longitude || '',
+      village: record.village || '',
+      block: record.block || '',
+      assembly_constituency: record.assembly_constituency || '',
+      commissioning_date: record.commissioning_date || '',
+      module_serial: record.module_serial || '',
+      battery_serial: record.battery_serial || '',
+      luminaire_serial: record.luminaire_serial || '',
+      rms: (record.rms || '').toUpperCase() === 'YES' ? 'YES' : 'NO',
+    });
+  }, []);
+
+  const cancelEdit = useCallback(() => {
+    setEditingId(null);
+    setEditDraft({});
+    setEditError(null);
+  }, []);
+
+  const updateDraft = useCallback((key, value) => {
+    setEditDraft((prev) => ({ ...prev, [key]: value }));
+  }, []);
+
+  const saveEdit = useCallback(async () => {
+    if (!editingId) return;
+    setSavingEdit(true);
+    setEditError(null);
+    try {
+      const updated = await updateInstallation(editingId, editDraft);
+      setRecords((prev) =>
+        prev.map((r) => (r.id === editingId ? { ...r, ...(updated || editDraft) } : r))
+      );
+      setEditingId(null);
+      setEditDraft({});
+    } catch (err) {
+      setEditError(err.message || 'Failed to save changes.');
+    } finally {
+      setSavingEdit(false);
+    }
+  }, [editingId, editDraft]);
+
+  // ===== Bulk mark RMS = YES =====
+  const handleMarkRmsYes = useCallback(async () => {
+    if (selectedIds.size === 0) {
+      alert('Please select at least one record.');
+      return;
+    }
+    const confirmed = window.confirm(
+      `Mark RMS = YES for ${selectedIds.size} selected record(s)?`
+    );
+    if (!confirmed) return;
+
+    setMarkingRms(true);
+    try {
+      const ids = Array.from(selectedIds);
+      await setInstallationsRms(ids, 'YES');
+      setSelectedIds(new Set());
+      // Reload so records that no longer match the "NO" filter drop out.
+      await loadRecords({ page });
+    } catch (err) {
+      alert(`Failed to update RMS status: ${err.message}`);
+    } finally {
+      setMarkingRms(false);
+    }
+  }, [selectedIds, loadRecords, page]);
 
   // Export to Excel
   const exportToExcel = useCallback(async () => {
@@ -417,6 +504,17 @@ function RMSNotEnteredReport({ onBack, onLogout }) {
             />
           </div>
           {selectedIds.size > 0 && (
+            <button
+              className="btn-action btn-rms-yes"
+              onClick={handleMarkRmsYes}
+              disabled={markingRms || deleting}
+              title="Set RMS = YES for selected records"
+            >
+              <CheckCircle2 size={16} />
+              {markingRms ? 'Updating…' : `Mark RMS YES (${selectedIds.size})`}
+            </button>
+          )}
+          {selectedIds.size > 0 && (
             <button 
               className={`btn-action btn-delete ${deleteClickCount > 0 ? 'btn-delete-active' : ''}`}
               onClick={handleDeleteSelected}
@@ -564,24 +662,70 @@ function RMSNotEnteredReport({ onBack, onLogout }) {
                   <th>RMS Status</th>
                   <th>Created</th>
                   <th>Creator</th>
+                  <th className="action-col no-print">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan="16" className="table-message">
+                    <td colSpan="17" className="table-message">
                       <RefreshCw size={20} className="spinning" />
                       Loading records…
                     </td>
                   </tr>
                 ) : records.length === 0 ? (
                   <tr>
-                    <td colSpan="16" className="table-message empty">
+                    <td colSpan="17" className="table-message empty">
                       No records found. {search || activeFilterCount > 0 ? 'Try adjusting your search or filters.' : ''}
                     </td>
                   </tr>
                 ) : (
-                  records.map((record) => (
+                  records.map((record) =>
+                    editingId === record.id ? (
+                      <tr key={record.id} className="editing-row">
+                        <td className="checkbox-col"><input type="checkbox" disabled /></td>
+                        <td><input className="edit-input" value={editDraft.project_name} onChange={(e) => updateDraft('project_name', e.target.value)} /></td>
+                        <td><input className="edit-input" value={editDraft.work_order} onChange={(e) => updateDraft('work_order', e.target.value)} /></td>
+                        <td><input className="edit-input narrow" value={editDraft.sno} onChange={(e) => updateDraft('sno', e.target.value)} /></td>
+                        <td><input className="edit-input" value={editDraft.exact_location} onChange={(e) => updateDraft('exact_location', e.target.value)} /></td>
+                        <td>
+                          <div className="edit-coords">
+                            <input className="edit-input narrow" placeholder="Lat" value={editDraft.latitude} onChange={(e) => updateDraft('latitude', e.target.value)} />
+                            <input className="edit-input narrow" placeholder="Lng" value={editDraft.longitude} onChange={(e) => updateDraft('longitude', e.target.value)} />
+                          </div>
+                        </td>
+                        <td><input className="edit-input" value={editDraft.village} onChange={(e) => updateDraft('village', e.target.value)} /></td>
+                        <td><input className="edit-input" value={editDraft.block} onChange={(e) => updateDraft('block', e.target.value)} /></td>
+                        <td><input className="edit-input" value={editDraft.assembly_constituency} onChange={(e) => updateDraft('assembly_constituency', e.target.value)} /></td>
+                        <td><input className="edit-input" value={editDraft.commissioning_date} onChange={(e) => updateDraft('commissioning_date', e.target.value)} /></td>
+                        <td><input className="edit-input" value={editDraft.module_serial} onChange={(e) => updateDraft('module_serial', e.target.value)} /></td>
+                        <td><input className="edit-input" value={editDraft.battery_serial} onChange={(e) => updateDraft('battery_serial', e.target.value)} /></td>
+                        <td><input className="edit-input" value={editDraft.luminaire_serial} onChange={(e) => updateDraft('luminaire_serial', e.target.value)} /></td>
+                        <td>
+                          <select className="edit-select" value={editDraft.rms} onChange={(e) => updateDraft('rms', e.target.value)}>
+                            <option value="YES">YES</option>
+                            <option value="NO">NO</option>
+                          </select>
+                        </td>
+                        <td>
+                          {record.created_at
+                            ? new Date(record.created_at).toLocaleDateString('en-GB')
+                            : '—'}
+                        </td>
+                        <td>{record.submitted_by || '—'}</td>
+                        <td className="action-col no-print">
+                          {editError && <div className="edit-error">{editError}</div>}
+                          <div className="edit-actions">
+                            <button className="btn-icon save" onClick={saveEdit} disabled={savingEdit} title="Save">
+                              <Check size={15} />
+                            </button>
+                            <button className="btn-icon" onClick={cancelEdit} disabled={savingEdit} title="Cancel">
+                              <X size={15} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
                     <tr key={record.id} className={selectedIds.has(record.id) ? 'selected' : ''}>
                       <td className="checkbox-col">
                         <input
@@ -618,8 +762,18 @@ function RMSNotEnteredReport({ onBack, onLogout }) {
                           : '—'}
                       </td>
                       <td>{record.submitted_by || '—'}</td>
+                      <td className="action-col no-print">
+                        <button
+                          className="btn-icon"
+                          onClick={() => startEdit(record)}
+                          title="Edit record"
+                        >
+                          <Pencil size={15} />
+                        </button>
+                      </td>
                     </tr>
-                  ))
+                    )
+                  )
                 )}
               </tbody>
             </table>

@@ -725,3 +725,70 @@
     page-break-inside: avoid;
   }
 }
+
+/* ===== Inline edit + row actions (RMS report) ===== */
+.rms-table th.action-col,
+.rms-table td.action-col {
+  white-space: nowrap;
+  text-align: center;
+}
+
+.btn-icon {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 6px;
+  color: #6b7280;
+  display: inline-flex;
+}
+.btn-icon:hover:not(:disabled) { background: #f3f4f6; color: #4f46e5; }
+.btn-icon:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-icon.save { color: #16a34a; }
+.btn-icon.save:hover:not(:disabled) { background: #f0fdf4; }
+
+.editing-row { background: #eef2ff; }
+
+.edit-input,
+.edit-select {
+  width: 100%;
+  min-width: 90px;
+  padding: 5px 7px;
+  border: 1px solid #c7d2fe;
+  border-radius: 5px;
+  font-size: 12px;
+  background: #fff;
+  color: #111827;
+}
+.edit-input.narrow { min-width: 56px; }
+.edit-input:focus,
+.edit-select:focus {
+  outline: none;
+  border-color: #4f46e5;
+  box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.15);
+}
+
+.edit-coords { display: flex; gap: 4px; }
+
+.edit-actions {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.edit-error {
+  font-size: 11px;
+  color: #dc2626;
+  margin-bottom: 4px;
+}
+
+/* Bulk "mark RMS = YES" button */
+.btn-action.btn-rms-yes {
+  background: #16a34a;
+  border-color: #16a34a;
+  color: #fff;
+}
+.btn-action.btn-rms-yes:hover:not(:disabled) {
+  background: #15803d;
+  border-color: #15803d;
+}
