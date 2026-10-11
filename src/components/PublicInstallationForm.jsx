@@ -7,7 +7,7 @@ import {
 import Logo from './Logo';
 import QrScannerModal from './QrScannerModal';
 import SearchableSelect from './SearchableSelect';
-import { emptyInstallation, insertInstallations } from '../utils/installations';
+import { emptyInstallation, insertInstallations, getNextSnoForWorkOrder } from '../utils/installations';
 import {
   fetchWorkOrders,
   fetchWorkOrderItems,
@@ -43,7 +43,6 @@ const STEPS = [
     icon: MapPinned,
     required: ['village'],
     fields: [
-      { key: 'sno', label: 'S.No.', placeholder: 'e.g., 1', help: 'Serial number of this pole in your list.' },
       { key: 'exact_location', label: 'Exact Location (Landmark)', placeholder: 'e.g., Near village temple', help: 'A nearby landmark so the spot is easy to find.' },
       { key: 'village', label: 'Village / Gram Panchayat', placeholder: 'Village / Gram Panchayat name', help: 'Auto-filled from the site photo. You can edit it.' },
       { key: 'block', label: 'Name of Block', placeholder: 'Block name', help: 'The administrative block.' },
@@ -58,14 +57,13 @@ const STEPS = [
     title: 'Equipment',
     hint: 'Enter the serial numbers printed on the equipment and the commissioning date.',
     icon: Cpu,
-    required: ['commissioning_date', 'photo_date', 'module_serial', 'battery_serial', 'luminaire_serial', 'rms'],
+    required: ['commissioning_date', 'photo_date', 'module_serial', 'battery_serial', 'luminaire_serial'],
     fields: [
       { key: 'commissioning_date', label: 'Date of Commissioning', type: 'date', help: 'The day the light was switched on.' },
       { key: 'photo_date', label: 'Photo Date', type: 'date', help: 'The day the site photo was taken.' },
       { key: 'module_serial', label: 'Module Serial Number', placeholder: 'Printed on the solar module', help: 'Serial number on the solar panel.' },
       { key: 'battery_serial', label: 'Battery Serial Number', placeholder: 'Printed on the battery', help: 'Serial number on the battery.' },
       { key: 'luminaire_serial', label: 'Luminaire Serial Number', placeholder: 'Printed on the light fitting', help: 'Serial number on the light.' },
-      { key: 'rms', label: 'RMS', type: 'radio', options: ['YES', 'NO'], required: true, help: 'Is remote monitoring (RMS) installed?' },
     ],
   },
   {
@@ -114,7 +112,9 @@ const CATEGORY_LABEL = {
 
 function PublicInstallationForm({ onLogout, initialWorkOrder = '' }) {
   const currentUser = getCurrentUser();
-  const [form, setForm] = useState(() => emptyInstallation());
+  // Public form defaults RMS to NO and the user never sees the field; the office
+  // marks RMS = YES later from the register / RMS report.
+  const [form, setForm] = useState(() => ({ ...emptyInstallation(), rms: 'NO' }));
 
   // ===== Work order integration =====
   // The list of saved work orders (for the dropdown selector).
@@ -463,8 +463,20 @@ function PublicInstallationForm({ onLogout, initialWorkOrder = '' }) {
       // (keys preserved: site_image / signed_pdf / attachments).
       const uploaded = await uploadInstallationFiles(files, setProgress);
       setProgress(null);
+
+      // S.No is assigned in the backend (field staff don't enter it): take the
+      // next incremental value for this work order. Falls back to '1' on error.
+      let backendSno = '';
+      try {
+        backendSno = await getNextSnoForWorkOrder(form.work_order);
+      } catch {
+        backendSno = '';
+      }
+
       const record = {
         ...form,
+        sno: backendSno || form.sno || '',
+        rms: form.rms || 'NO',
         site_image: uploaded.site_image,
         signed_pdf: uploaded.signed_pdf,
         attachments: uploaded.attachments,
@@ -519,6 +531,7 @@ function PublicInstallationForm({ onLogout, initialWorkOrder = '' }) {
     // available serials so the ones just used drop out of the dropdowns.
     setForm({
       ...emptyInstallation(),
+      rms: 'NO',
       ...(selectedWorkOrder ? { work_order: selectedOrderNo || selectedWorkOrder.name } : {}),
     });
     setFiles({ site_image: null, signed_pdf: null, attachments: [] });

@@ -14,6 +14,7 @@ import {
   insertInstallations,
   updateInstallation,
   deleteInstallation,
+  resequenceInstallationsSno,
   parsePastedRows,
   parseUploadedFile,
 } from '../utils/installations';
@@ -26,6 +27,20 @@ import './InstallationRegister.css';
 const ROW_FIELDS = INSTALLATION_FIELDS.filter(
   (f) => f.key !== 'project_name' && f.key !== 'work_order'
 );
+
+// Visible grid columns exclude S.No — it is assigned incrementally in the
+// backend from the "S.No Start" value instead of typed per row.
+const GRID_FIELDS = ROW_FIELDS.filter((f) => f.key !== 'sno');
+
+// Given a start value and a zero-based index, return the incremented S.No.
+// If start is blank/non-numeric, falls back to the row's own sno value.
+function computeSno(snoStart, index, fallback) {
+  const base = String(snoStart ?? '').trim();
+  if (base !== '' && /^\d+$/.test(base)) {
+    return String(Number(base) + index);
+  }
+  return fallback ?? '';
+}
 
 function InstallationRegister({ onBack, onLogout }) {
   const [mode, setMode] = useState('entry'); // 'entry' | 'dashboard'
@@ -43,6 +58,10 @@ function InstallationRegister({ onBack, onLogout }) {
   const [rows, setRows] = useState([{ _id: 1, ...emptyInstallation() }]);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
+  // S.No starting value. When set to a number, every row's S.No is assigned
+  // incrementally in the backend (start, start+1, start+2 …) at save time, so
+  // the per-row S.No column is hidden.
+  const [snoStart, setSnoStart] = useState('');
 
   // Dashboard state — server-side paginated.
   const [records, setRecords] = useState([]);
@@ -167,20 +186,26 @@ function InstallationRegister({ onBack, onLogout }) {
     setSaving(true);
     setMessage(null);
     try {
-      const payload = rows.map((r) => ({ ...r, project_name: projectName, work_order: workOrder }));
+      const payload = rows.map((r, i) => ({
+        ...r,
+        project_name: projectName,
+        work_order: workOrder,
+        sno: computeSno(snoStart, i, r.sno),
+      }));
       const { inserted } = await insertInstallations(payload);
       if (inserted === 0) {
         setMessage({ type: 'error', text: 'Nothing to save. Fill at least one row.' });
       } else {
         setMessage({ type: 'success', text: `Saved ${inserted} installation(s) to Supabase.` });
         setRows([{ _id: 1, ...emptyInstallation() }]);
+        setSnoStart('');
       }
     } catch (err) {
       setMessage({ type: 'error', text: `Save failed: ${err.message}` });
     } finally {
       setSaving(false);
     }
-  }, [rows, projectName, workOrder]);
+  }, [rows, projectName, workOrder, snoStart]);
 
   // Fetch a single page from the server. Only hits the API for the requested
   // page + search term, so switching pages / searching triggers one call each.
@@ -292,6 +317,8 @@ function InstallationRegister({ onBack, onLogout }) {
             setProjectName={setProjectName}
             workOrder={workOrder}
             setWorkOrder={setWorkOrder}
+            snoStart={snoStart}
+            setSnoStart={setSnoStart}
             rows={rows}
             addRow={addRow}
             removeRow={removeRow}
@@ -329,7 +356,7 @@ function InstallationRegister({ onBack, onLogout }) {
 }
 
 function EntryView({
-  projectName, setProjectName, workOrder, setWorkOrder,
+  projectName, setProjectName, workOrder, setWorkOrder, snoStart, setSnoStart,
   rows, addRow, removeRow, updateCell, handlePaste, handleSave, handleBulkUpload, saving, message,
   availableWorkOrders, showWorkOrderDropdown, setShowWorkOrderDropdown, 
   workOrderSearch, setWorkOrderSearch, filteredWorkOrders,
@@ -353,6 +380,19 @@ function EntryView({
             onChange={(e) => setProjectName(e.target.value)}
             placeholder="e.g., Panchkula Solar Street Light Phase-1"
           />
+        </div>
+        <div className="id-field">
+          <label>S.No Start <span className="opt">(auto-increment)</span></label>
+          <input
+            type="text"
+            inputMode="numeric"
+            value={snoStart}
+            onChange={(e) => setSnoStart(e.target.value.replace(/[^\d]/g, ''))}
+            placeholder="e.g., 2600"
+          />
+          <span className="field-hint">
+            Rows get S.No {snoStart ? `${snoStart}, ${Number(snoStart) + 1}, ${Number(snoStart) + 2}…` : 'incrementally from this value'}
+          </span>
         </div>
         <div className="id-field work-order-selector">
           <label>
@@ -461,16 +501,20 @@ function EntryView({
         <table className="entry-table">
           <thead>
             <tr>
-              {ROW_FIELDS.map((f) => (
+              <th>S.No.</th>
+              {GRID_FIELDS.map((f) => (
                 <th key={f.key}>{f.label}</th>
               ))}
               <th className="action-col">Action</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
+            {rows.map((row, index) => (
               <tr key={row._id}>
-                {ROW_FIELDS.map((f) => (
+                <td className="sno-cell">
+                  <span className="sno-preview">{computeSno(snoStart, index, row.sno) || '—'}</span>
+                </td>
+                {GRID_FIELDS.map((f) => (
                   <td key={f.key}>
                     <input
                       type="text"
@@ -536,6 +580,9 @@ function DashboardView({
   const [editError, setEditError] = useState(null);
   // Selected records for JCR submission
   const [selectedIds, setSelectedIds] = useState(new Set());
+  // Bulk S.No assignment state.
+  const [snoStart, setSnoStart] = useState('');
+  const [assigningSno, setAssigningSno] = useState(false);
 
   const toggleSelect = useCallback((id) => {
     setSelectedIds(prev => {
@@ -758,6 +805,32 @@ function DashboardView({
     }
   }, [search]);
 
+  // Resequence S.No for ALL installations (matching the current search),
+  // ordered by date. The oldest record gets the entered start value and every
+  // later record increments by one.
+  const handleAssignSno = useCallback(async () => {
+    const base = String(snoStart).trim();
+    if (!/^\d+$/.test(base)) {
+      alert('Enter a numeric S.No start value (e.g., 2600).');
+      return;
+    }
+    if (!window.confirm(
+      `Renumber S.No for all ${total} installation(s)${search ? ' matching the search' : ''}, ordered by date, starting from ${base}?\n\nThe earliest record becomes ${base} and each later record increments by one.`
+    )) return;
+
+    setAssigningSno(true);
+    try {
+      const { updated } = await resequenceInstallationsSno({ start: Number(base), search });
+      setSnoStart('');
+      await loadRecords({ page });
+      alert(`Updated S.No for ${updated} installation(s).`);
+    } catch (err) {
+      alert(`Failed to assign S.No: ${err.message}`);
+    } finally {
+      setAssigningSno(false);
+    }
+  }, [snoStart, search, total, loadRecords, page]);
+
   return (
     <>
       <div className="stats-row">
@@ -795,6 +868,25 @@ function DashboardView({
         >
           <Send size={16} /> Submit to JCR ({selectedIds.size})
         </button>
+        <div className="sno-assign">
+          <input
+            type="text"
+            inputMode="numeric"
+            className="sno-assign-input"
+            value={snoStart}
+            onChange={(e) => setSnoStart(e.target.value.replace(/[^\d]/g, ''))}
+            placeholder="S.No start"
+            title="Renumber all installations by date from this value"
+          />
+          <button
+            className="btn-assign-sno"
+            onClick={handleAssignSno}
+            disabled={assigningSno || !snoStart}
+            title="Renumber S.No for all installations, ordered by date"
+          >
+            {assigningSno ? 'Updating…' : 'Set S.No (all, by date)'}
+          </button>
+        </div>
       </div>
 
       <div className="dash-filters">

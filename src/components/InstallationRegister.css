@@ -915,3 +915,62 @@
   font-weight: 600;
   margin-top: 2px;
 }
+
+/* S.No start field hint + computed preview column */
+.id-field .field-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.entry-table td.sno-cell {
+  text-align: center;
+  background: #f9fafb;
+}
+
+.entry-table .sno-preview {
+  font-weight: 600;
+  color: #4f46e5;
+  font-size: 13px;
+}
+
+/* Bulk S.No assignment control (dashboard toolbar) */
+.sno-assign {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sno-assign-input {
+  width: 110px;
+  padding: 8px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.sno-assign-input:focus {
+  outline: none;
+  border-color: #4f46e5;
+  box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.15);
+}
+
+.btn-assign-sno {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: #4f46e5;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s;
+}
+
+.btn-assign-sno:hover:not(:disabled) { background: #4338ca; }
+.btn-assign-sno:disabled { opacity: 0.5; cursor: not-allowed; }
