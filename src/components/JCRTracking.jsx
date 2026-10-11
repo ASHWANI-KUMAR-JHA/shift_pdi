@@ -42,6 +42,12 @@ function JCRTracking({ onBack, onLogout }) {
   const [importing, setImporting] = useState(false);
   const excelInputRef = useRef(null);
 
+  // Selection and bulk delete state
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [deleteClickCount, setDeleteClickCount] = useState(0);
+  const [deleteTimer, setDeleteTimer] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+
   const loadWorkOrders = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -318,6 +324,110 @@ function JCRTracking({ onBack, onLogout }) {
     filteredWorkOrders.reduce((sum, wo) => sum + (Number(wo.lights_count) || 0), 0)
   , [filteredWorkOrders]);
 
+  // Selection handlers
+  const toggleSelect = useCallback((id) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
+
+  const toggleSelectAll = useCallback(() => {
+    if (selectedIds.size === filteredWorkOrders.length && filteredWorkOrders.length > 0) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredWorkOrders.map(wo => wo.id)));
+    }
+  }, [filteredWorkOrders, selectedIds.size]);
+
+  // Bulk delete with triple-click confirmation
+  const handleBulkDelete = useCallback(async () => {
+    if (selectedIds.size === 0) {
+      setMessage({ type: 'error', text: 'Please select at least one work order to delete.' });
+      return;
+    }
+
+    const newCount = deleteClickCount + 1;
+    setDeleteClickCount(newCount);
+
+    // Clear any existing timer
+    if (deleteTimer) {
+      clearTimeout(deleteTimer);
+    }
+
+    // Reset counter after 2 seconds of inactivity
+    const timer = setTimeout(() => {
+      setDeleteClickCount(0);
+    }, 2000);
+    setDeleteTimer(timer);
+
+    // On third click, show confirmation
+    if (newCount >= 3) {
+      setDeleteClickCount(0);
+      clearTimeout(timer);
+
+      const confirmed = window.confirm(
+        `⚠️ DELETE ALL SELECTED WORK ORDERS?\n\n` +
+        `You are about to permanently delete ${selectedIds.size} work order(s).\n\n` +
+        `This will also delete:\n` +
+        `• All comments associated with these work orders\n` +
+        `• All files attached to these work orders\n\n` +
+        `This action CANNOT be undone!\n\n` +
+        `Click OK to proceed with deletion, or Cancel to abort.`
+      );
+
+      if (!confirmed) return;
+
+      setDeleting(true);
+      try {
+        let deletedCount = 0;
+        const failedIds = [];
+
+        for (const id of selectedIds) {
+          try {
+            await deleteJCRWorkOrder(id);
+            deletedCount++;
+          } catch (err) {
+            console.error(`Failed to delete work order ${id}:`, err);
+            failedIds.push(id);
+          }
+        }
+
+        if (deletedCount > 0) {
+          setMessage({ 
+            type: 'success', 
+            text: `✅ Successfully deleted ${deletedCount} work order(s).${failedIds.length > 0 ? `\n\n⚠️ Failed to delete ${failedIds.length} work order(s).` : ''}` 
+          });
+          
+          // Clear selection and reload data
+          setSelectedIds(new Set());
+          await loadWorkOrders();
+        } else {
+          setMessage({ type: 'error', text: '❌ Failed to delete any work orders. Please try again.' });
+        }
+      } catch (err) {
+        console.error('Bulk delete failed:', err);
+        setError(`❌ Delete operation failed: ${err.message}`);
+      } finally {
+        setDeleting(false);
+      }
+    }
+  }, [selectedIds, deleteClickCount, deleteTimer, loadWorkOrders]);
+
+  // Clean up timer on unmount
+  useEffect(() => {
+    return () => {
+      if (deleteTimer) {
+        clearTimeout(deleteTimer);
+      }
+    };
+  }, [deleteTimer]);
+
   const handleExportExcel = useCallback(() => {
     const dataToExport = filteredWorkOrders;
     if (dataToExport.length === 0) {
@@ -560,6 +670,18 @@ function JCRTracking({ onBack, onLogout }) {
             />
           </div>
           <div className="toolbar-actions">
+            {selectedIds.size > 0 && (
+              <button 
+                className={`btn-bulk-delete ${deleteClickCount > 0 ? 'btn-delete-active' : ''}`}
+                onClick={handleBulkDelete}
+                disabled={deleting}
+                title={deleteClickCount === 0 ? 'Click 3 times to delete' : deleteClickCount === 1 ? 'Click 2 more times' : 'Click 1 more time'}
+              >
+                <Trash2 size={16} />
+                {deleting ? 'Deleting...' : `Delete Selected (${selectedIds.size})`}
+                {deleteClickCount > 0 && <span className="click-indicator">{deleteClickCount}/3</span>}
+              </button>
+            )}
             <button className="btn-import" onClick={() => excelInputRef.current?.click()} disabled={importing}>
               <Upload size={16} />
               {importing ? 'Importing...' : 'Import Excel'}
@@ -634,6 +756,14 @@ function JCRTracking({ onBack, onLogout }) {
           <table className="jcr-table">
             <thead>
               <tr>
+                <th className="checkbox-col">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.size > 0 && selectedIds.size === filteredWorkOrders.length && filteredWorkOrders.length > 0}
+                    onChange={toggleSelectAll}
+                    title="Select all on page"
+                  />
+                </th>
                 <th>S.No</th>
                 <th>Work Order No</th>
                 <th>WO Date</th>
@@ -656,12 +786,12 @@ function JCRTracking({ onBack, onLogout }) {
             <tbody>
               {loading && (
                 <tr>
-                  <td colSpan="17" className="loading">Loading work orders...</td>
+                  <td colSpan="18" className="loading">Loading work orders...</td>
                 </tr>
               )}
               {!loading && filteredWorkOrders.length === 0 && (
                 <tr>
-                  <td colSpan="17" className="empty">
+                  <td colSpan="18" className="empty">
                     {searchQuery || statusFilter !== 'all'
                       ? 'No work orders match the current filter'
                       : 'No work orders yet. Click "Add Work Order" to create one.'}
@@ -674,6 +804,8 @@ function JCRTracking({ onBack, onLogout }) {
                   workOrder={wo}
                   index={index + 1}
                   isEditing={editingId === wo.id}
+                  isSelected={selectedIds.has(wo.id)}
+                  onSelect={() => toggleSelect(wo.id)}
                   onEdit={() => setEditingId(wo.id)}
                   onSave={async (updated) => {
                     // Completed work orders cannot have PDI pending
@@ -695,6 +827,7 @@ function JCRTracking({ onBack, onLogout }) {
               {/* Total Row */}
               {filteredWorkOrders.length > 0 && (
                 <tr className="total-row">
+                  <td></td>
                   <td></td>
                   <td></td>
                   <td></td>
@@ -823,7 +956,7 @@ function JCRTracking({ onBack, onLogout }) {
 }
 
 // Work Order Row Component with inline editing
-function WorkOrderRow({ workOrder, index, isEditing, onEdit, onSave, onCancel, onDelete, onShowComments }) {
+function WorkOrderRow({ workOrder, index, isEditing, isSelected, onSelect, onEdit, onSave, onCancel, onDelete, onShowComments }) {
   const [editData, setEditData] = useState(workOrder);
   const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
@@ -886,6 +1019,14 @@ function WorkOrderRow({ workOrder, index, isEditing, onEdit, onSave, onCancel, o
   if (isEditing) {
     return (
       <tr className="editing-row">
+        <td className="checkbox-col">
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={onSelect}
+            onClick={(e) => e.stopPropagation()}
+          />
+        </td>
         <td>{index}</td>
         <td><input value={editData.work_order_no} onChange={e => setEditData({...editData, work_order_no: e.target.value})} /></td>
         <td><input type="date" value={editData.work_order_date} onChange={e => setEditData({...editData, work_order_date: e.target.value})} /></td>
@@ -939,7 +1080,15 @@ function WorkOrderRow({ workOrder, index, isEditing, onEdit, onSave, onCancel, o
   }
 
   return (
-    <tr className={`status-${workOrder.status}`}>
+    <tr className={`status-${workOrder.status} ${isSelected ? 'selected' : ''}`}>
+      <td className="checkbox-col">
+        <input
+          type="checkbox"
+          checked={isSelected}
+          onChange={onSelect}
+          onClick={(e) => e.stopPropagation()}
+        />
+      </td>
       <td>{index}</td>
       <td><strong>{workOrder.work_order_no}</strong></td>
       <td>{formatDateForDisplay(workOrder.work_order_date)}</td>

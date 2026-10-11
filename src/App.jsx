@@ -7,6 +7,7 @@ import JCRTracking from './components/JCRTracking';
 import PDI from './components/PDI';
 import WorkOrders from './components/WorkOrders';
 import InstallationRegister from './components/InstallationRegister';
+import RMSNotEnteredReport from './components/RMSNotEnteredReport';
 import PublicInstallationForm from './components/PublicInstallationForm';
 import GeoDebug from './components/GeoDebug';
 import UserManager from './components/UserManager';
@@ -111,6 +112,11 @@ function App() {
   // Show the User Manager page
   if (currentPage === 'users') {
     return <UserManager onBack={goHome} onLogout={handleLogout} />;
+  }
+
+  // Show the RMS Not Entered Report page
+  if (currentPage === 'rmsReport') {
+    return <RMSNotEnteredReport onBack={goHome} onLogout={handleLogout} />;
   }
 
   // Default landing page.

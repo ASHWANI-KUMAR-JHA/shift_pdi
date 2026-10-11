@@ -37,6 +37,7 @@ const NAV_ITEMS = [
   { key: 'jcrTracking', label: 'Work Order Tracking', icon: ClipboardList },
   { key: 'workOrders', label: 'Work Orders', icon: Package },
   { key: 'installations', label: 'Installations', icon: ClipboardList },
+  { key: 'rmsReport', label: 'RMS Report', icon: FileCheck },
   { key: 'jcr', label: 'JCR', icon: FileCheck },
   { key: 'jcrSelect', label: 'JCR Select', icon: FileCheck },
   { key: 'pdi', label: 'PDI', icon: ClipboardCheck },
@@ -68,6 +69,14 @@ const TOOLS = [
     icon: ClipboardList,
     accent: 'teal',
     tag: 'Field',
+  },
+  {
+    key: 'rmsReport',
+    title: 'RMS Not Entered Report',
+    description: 'View all installations where RMS status is pending, not entered, or blank.',
+    icon: FileCheck,
+    accent: 'red',
+    tag: 'Reports',
   },
   {
     key: 'jcr',

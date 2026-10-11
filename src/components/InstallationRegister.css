@@ -760,3 +760,158 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* Work Order Selector Dropdown */
+.work-order-selector {
+  position: relative;
+}
+
+.work-order-selector .available-count {
+  margin-left: 8px;
+  font-size: 11px;
+  color: #10b981;
+  font-weight: 600;
+}
+
+.work-order-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.work-order-input-wrapper input {
+  flex: 1;
+  padding-right: 36px;
+}
+
+.btn-dropdown-toggle {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: #f3f4f6;
+  border: none;
+  border-radius: 4px;
+  padding: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.btn-dropdown-toggle:hover {
+  background: #e5e7eb;
+}
+
+.work-order-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 4px;
+  background: white;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  max-height: 400px;
+  display: flex;
+  flex-direction: column;
+}
+
+.dropdown-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.dropdown-search {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.dropdown-search:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.btn-close-dropdown {
+  background: #f3f4f6;
+  border: none;
+  border-radius: 4px;
+  padding: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.btn-close-dropdown:hover {
+  background: #e5e7eb;
+}
+
+.dropdown-list {
+  flex: 1;
+  overflow-y: auto;
+  max-height: 320px;
+}
+
+.dropdown-empty {
+  padding: 24px;
+  text-align: center;
+  color: #9ca3af;
+  font-size: 13px;
+}
+
+.dropdown-item {
+  padding: 12px;
+  border-bottom: 1px solid #f3f4f6;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.dropdown-item:hover {
+  background: #f9fafb;
+}
+
+.dropdown-item:last-child {
+  border-bottom: none;
+}
+
+.wo-number {
+  font-weight: 700;
+  font-size: 14px;
+  color: #1f2937;
+  margin-bottom: 4px;
+}
+
+.wo-details {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wo-project {
+  font-size: 12px;
+  color: #4b5563;
+  font-weight: 500;
+}
+
+.wo-location {
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.wo-lights {
+  font-size: 11px;
+  color: #10b981;
+  font-weight: 600;
+  margin-top: 2px;
+}

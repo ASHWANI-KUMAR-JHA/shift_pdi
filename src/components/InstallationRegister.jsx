@@ -18,6 +18,7 @@ import {
   parseUploadedFile,
 } from '../utils/installations';
 import { storePendingJCRImport } from '../utils/jcrDataTransfer';
+import { fetchAvailableWorkOrders } from '../utils/workOrderSync';
 import './InstallationRegister.css';
 
 // Fields shown as editable columns in the entry grid (excludes project/work order
@@ -32,6 +33,11 @@ function InstallationRegister({ onBack, onLogout }) {
   // Shared identifiers (nullable)
   const [projectName, setProjectName] = useState('');
   const [workOrder, setWorkOrder] = useState('');
+  
+  // Available work orders from JCR Tracking
+  const [availableWorkOrders, setAvailableWorkOrders] = useState([]);
+  const [showWorkOrderDropdown, setShowWorkOrderDropdown] = useState(false);
+  const [workOrderSearch, setWorkOrderSearch] = useState('');
 
   // Entry rows
   const [rows, setRows] = useState([{ _id: 1, ...emptyInstallation() }]);
@@ -49,6 +55,40 @@ function InstallationRegister({ onBack, onLogout }) {
   // Tracks whether the dashboard dataset has been fetched at least once, so we
   // don't hit the API again every time the user switches back to the dashboard.
   const [loaded, setLoaded] = useState(false);
+
+  // Load available work orders when component mounts or when switching to entry mode
+  useEffect(() => {
+    if (mode === 'entry') {
+      loadAvailableWorkOrders();
+    }
+  }, [mode]);
+
+  const loadAvailableWorkOrders = useCallback(async () => {
+    try {
+      const workOrders = await fetchAvailableWorkOrders();
+      setAvailableWorkOrders(workOrders);
+    } catch (err) {
+      console.error('Failed to load available work orders:', err);
+    }
+  }, []);
+
+  const handleSelectWorkOrder = useCallback((wo) => {
+    setWorkOrder(wo.work_order_no);
+    setProjectName(wo.project_name);
+    setShowWorkOrderDropdown(false);
+    setWorkOrderSearch('');
+  }, []);
+
+  const filteredWorkOrders = useMemo(() => {
+    if (!workOrderSearch) return availableWorkOrders;
+    const search = workOrderSearch.toLowerCase();
+    return availableWorkOrders.filter(
+      (wo) =>
+        wo.work_order_no.toLowerCase().includes(search) ||
+        wo.project_name.toLowerCase().includes(search) ||
+        wo.project_location.toLowerCase().includes(search)
+    );
+  }, [availableWorkOrders, workOrderSearch]);
 
   const addRow = useCallback(() => {
     setRows((prev) => [
@@ -261,6 +301,12 @@ function InstallationRegister({ onBack, onLogout }) {
             handleBulkUpload={handleBulkUpload}
             saving={saving}
             message={message}
+            availableWorkOrders={availableWorkOrders}
+            showWorkOrderDropdown={showWorkOrderDropdown}
+            setShowWorkOrderDropdown={setShowWorkOrderDropdown}
+            workOrderSearch={workOrderSearch}
+            setWorkOrderSearch={setWorkOrderSearch}
+            filteredWorkOrders={filteredWorkOrders}
           />
         ) : (
           <DashboardView
@@ -285,6 +331,8 @@ function InstallationRegister({ onBack, onLogout }) {
 function EntryView({
   projectName, setProjectName, workOrder, setWorkOrder,
   rows, addRow, removeRow, updateCell, handlePaste, handleSave, handleBulkUpload, saving, message,
+  availableWorkOrders, showWorkOrderDropdown, setShowWorkOrderDropdown, 
+  workOrderSearch, setWorkOrderSearch, filteredWorkOrders,
 }) {
   const fileInputRef = useRef(null);
 
@@ -306,14 +354,80 @@ function EntryView({
             placeholder="e.g., Panchkula Solar Street Light Phase-1"
           />
         </div>
-        <div className="id-field">
-          <label>Work Order <span className="opt">(optional)</span></label>
-          <input
-            type="text"
-            value={workOrder}
-            onChange={(e) => setWorkOrder(e.target.value)}
-            placeholder="e.g., WO/2026/00123"
-          />
+        <div className="id-field work-order-selector">
+          <label>
+            Work Order <span className="opt">(optional)</span>
+            {availableWorkOrders.length > 0 && (
+              <span className="available-count">
+                {availableWorkOrders.length} available
+              </span>
+            )}
+          </label>
+          <div className="work-order-input-wrapper">
+            <input
+              type="text"
+              value={workOrder}
+              onChange={(e) => setWorkOrder(e.target.value)}
+              onFocus={() => setShowWorkOrderDropdown(true)}
+              placeholder="e.g., WO/2026/00123 or select from available"
+            />
+            {availableWorkOrders.length > 0 && (
+              <button
+                type="button"
+                className="btn-dropdown-toggle"
+                onClick={() => setShowWorkOrderDropdown(!showWorkOrderDropdown)}
+                title="Select from available work orders"
+              >
+                <ChevronDown size={16} />
+              </button>
+            )}
+          </div>
+          
+          {showWorkOrderDropdown && availableWorkOrders.length > 0 && (
+            <div className="work-order-dropdown">
+              <div className="dropdown-header">
+                <input
+                  type="text"
+                  className="dropdown-search"
+                  placeholder="Search work orders..."
+                  value={workOrderSearch}
+                  onChange={(e) => setWorkOrderSearch(e.target.value)}
+                  autoFocus
+                />
+                <button
+                  className="btn-close-dropdown"
+                  onClick={() => {
+                    setShowWorkOrderDropdown(false);
+                    setWorkOrderSearch('');
+                  }}
+                >
+                  <X size={14} />
+                </button>
+              </div>
+              <div className="dropdown-list">
+                {filteredWorkOrders.length === 0 ? (
+                  <div className="dropdown-empty">No matching work orders</div>
+                ) : (
+                  filteredWorkOrders.map((wo) => (
+                    <div
+                      key={wo.id}
+                      className="dropdown-item"
+                      onClick={() => handleSelectWorkOrder(wo)}
+                    >
+                      <div className="wo-number">{wo.work_order_no}</div>
+                      <div className="wo-details">
+                        <div className="wo-project">{wo.project_name}</div>
+                        <div className="wo-location">{wo.project_location}</div>
+                        {wo.lights_count && (
+                          <div className="wo-lights">{wo.lights_count} lights</div>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
