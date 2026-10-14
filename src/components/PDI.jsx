@@ -27,7 +27,7 @@ const GENERAL_FIELDS = [
 const ADDITIONAL_FIELDS = [
   { key: 'chargeController', no: '12', label: 'Type of Charge Controller:' },
   { key: 'electronicEfficiency', no: '13', label: 'Electronic Efficiency of system:' },
-  { key: 'poleType', no: '14', label: 'Type of Pole, length, wall thickness, outer dia and weight of the pole:' },
+  { key: 'poleType', no: '14', label: 'Type of Pole, length, wall thickness, outer dia and weight of the pole:\n(wall thickness: 3.0 mm (>3.0mm with hot dip galvanized), weight: 7.29 Kg/meter (>7.29Kg/meter with hot dip galvanized)' },
   { key: 'cableType', no: '15', label: 'Type, Make, Size & Standard of Cable used:' },
   { key: 'ledIndicator', no: '16', label: 'Two LED Indicator: (Green On – Charging, Red On-Battery Deep Discharge)' },
   { key: 'rms', no: '17', label: 'Remote Monitoring System (RMS) as per rate contract:' },
@@ -307,7 +307,7 @@ function PDI({ onBack, onLogout }) {
   const [reportHeading, setReportHeading] = useState(PERSISTED.reportHeading ?? DEFAULT_HEADING);
 
   const [fields, setFields] = useState(PERSISTED.fields ?? {
-    department: '',
+    department: 'New & Renewable Energy Department & HAREDA (Haryana)',
     rateContractNo: '',
     orderedQty: '',
     consigneeDept: '',
@@ -344,6 +344,11 @@ function PDI({ onBack, onLogout }) {
   // User-added custom bulk-upload sections (free-text header, same sheet as SPV Modules)
   // Each: { id, title, list: [] }
   const [customBulkSections, setCustomBulkSections] = useState(PERSISTED.customBulkSections ?? []);
+
+  // User-added additional free-form pages appended at the end of the report.
+  // Each page gets its own page in the PDF and is included in the page numbering.
+  // Each: { id, title, body }
+  const [extraPages, setExtraPages] = useState(PERSISTED.extraPages ?? []);
 
   const [committeeComments, setCommitteeComments] = useState(PERSISTED.committeeComments ?? 'Material verified and accepted.');
 
@@ -420,7 +425,7 @@ function PDI({ onBack, onLogout }) {
       projectName, reportHeading, fields, additionalFields, workOrders,
       sampleCount, spvRows, batteryRows, luminaireRows, customSections, committeeComments,
       supplier, inspector, signatureCount, signatures, spvList, batteryList, luminaireList, customBulkSections,
-      layout, listTitles,
+      layout, listTitles, extraPages,
     };
     try {
       localStorage.setItem(PDI_STORAGE_KEY, JSON.stringify(data));
@@ -431,7 +436,7 @@ function PDI({ onBack, onLogout }) {
     projectName, reportHeading, fields, additionalFields, workOrders,
     sampleCount, spvRows, batteryRows, luminaireRows, customSections, committeeComments,
     supplier, inspector, signatureCount, signatures, spvList, batteryList, luminaireList, customBulkSections,
-    layout, listTitles,
+    layout, listTitles, extraPages,
   ]);
 
   // Export all current PDI data as a downloadable JSON file
@@ -440,7 +445,7 @@ function PDI({ onBack, onLogout }) {
       projectName, reportHeading, fields, additionalFields, workOrders,
       sampleCount, spvRows, batteryRows, luminaireRows, customSections, committeeComments,
       supplier, inspector, signatureCount, signatures, spvList, batteryList, luminaireList, customBulkSections,
-      layout, listTitles,
+      layout, listTitles, extraPages,
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -456,7 +461,7 @@ function PDI({ onBack, onLogout }) {
     projectName, reportHeading, fields, additionalFields, workOrders,
     sampleCount, spvRows, batteryRows, luminaireRows, customSections, committeeComments,
     supplier, inspector, signatureCount, signatures, spvList, batteryList, luminaireList, customBulkSections,
-    layout, listTitles,
+    layout, listTitles, extraPages,
   ]);
 
   // Load PDI data from a user-selected JSON file
@@ -486,6 +491,7 @@ function PDI({ onBack, onLogout }) {
         if (d.batteryList) setBatteryList(d.batteryList);
         if (d.luminaireList) setLuminaireList(d.luminaireList);
         if (d.customBulkSections) setCustomBulkSections(d.customBulkSections);
+        if (d.extraPages) setExtraPages(d.extraPages);
         if (d.layout) setLayout(prev => ({ ...prev, ...d.layout }));
         if (d.listTitles) setListTitles(prev => ({ ...prev, ...d.listTitles }));
       } catch (err) {
@@ -606,6 +612,20 @@ function PDI({ onBack, onLogout }) {
       const list = parseIdList(text);
       setCustomBulkSections(prev => prev.map(s => (s.id === id ? { ...s, list } : s)));
     }
+  }, []);
+
+  // Additional free-form page handlers
+  const addExtraPage = useCallback(() => {
+    setExtraPages(prev => [
+      ...prev,
+      { id: prev.length ? Math.max(...prev.map(p => p.id)) + 1 : 1, title: '', body: '' },
+    ]);
+  }, []);
+  const removeExtraPage = useCallback((id) => {
+    setExtraPages(prev => prev.filter(p => p.id !== id));
+  }, []);
+  const updateExtraPage = useCallback((id, key, value) => {
+    setExtraPages(prev => prev.map(p => (p.id === id ? { ...p, [key]: value } : p)));
   }, []);
 
   const handleSupplier = useCallback((key, value) => {
@@ -767,15 +787,26 @@ function PDI({ onBack, onLogout }) {
 
     let pageNo = 0;
 
+    // Draws only the divider line per page. The "Page X of Y" label is stamped
+    // in a final pass (stampPageNumbers) once the total page count is known.
     const drawFooter = () => {
       const footerY = pageHeight - 14;
       doc.setDrawColor(0, 0, 0);
       doc.setLineWidth(0.3);
       doc.line(margin, footerY, pageWidth - margin, footerY);
-      doc.setFontSize(7);
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(0, 0, 0);
-      doc.text(`Page ${pageNo}`, pageWidth / 2, footerY + 5, { align: 'center' });
+    };
+
+    // Stamp "Page X of Y" centered under the divider on every page.
+    const stampPageNumbers = () => {
+      const total = doc.internal.getNumberOfPages();
+      const footerY = pageHeight - 14;
+      for (let i = 1; i <= total; i++) {
+        doc.setPage(i);
+        doc.setFontSize(8);
+        doc.setFont('times', 'normal');
+        doc.setTextColor(0, 0, 0);
+        doc.text(`Page ${i} of ${total}`, pageWidth / 2, footerY + 5, { align: 'center' });
+      }
     };
 
     const newPage = (withTitle = true) => {
@@ -784,19 +815,19 @@ function PDI({ onBack, onLogout }) {
       let y = margin;
       // FORMAT-I top right
       doc.setFontSize(8);
-      doc.setFont('helvetica', 'normal');
+      doc.setFont('times', 'normal');
       doc.setTextColor(0, 0, 0);
       doc.text('FORMAT-I', pageWidth - margin, y, { align: 'right' });
       y += 5;
       if (withTitle) {
         doc.setFontSize(10);
-        doc.setFont('helvetica', 'bold');
+        doc.setFont('times', 'bold');
         const headingLines = doc.splitTextToSize(reportHeading || DEFAULT_HEADING, contentWidth);
         doc.text(headingLines, pageWidth / 2, y + 2, { align: 'center' });
         y += headingLines.length * 4.5 + 2;
         // if (projectName) {
         //   doc.setFontSize(9);
-        //   doc.setFont('helvetica', 'bolditalic');
+        //   doc.setFont('times', 'bolditalic');
         //   const projLines = doc.splitTextToSize(`Project: ${projectName}`, contentWidth);
         //   doc.text(projLines, pageWidth / 2, y + 2, { align: 'center' });
         //   y += projLines.length * 4 + 2;
@@ -835,17 +866,17 @@ function PDI({ onBack, onLogout }) {
       doc.rect(x + labelColW + midColW, y, valColW, rowH);
       // text
       doc.setTextColor(0, 0, 0);
-      doc.setFont('helvetica', 'bold');
+      doc.setFont('times', 'bold');
       doc.text(no, x + labelColW / 2, y + 4, { align: 'center' });
       doc.text(labelLines, x + labelColW + 1.5, y + 4);
-      doc.setFont('helvetica', 'normal');
+      doc.setFont('times', 'normal');
       doc.text(valueLines, x + labelColW + midColW + 1.5, y + 4);
       return y + rowH;
     };
 
     // Generic data table renderer
     const drawTable = (y, title, cols, rows, groupLabel) => {
-      doc.setFont('helvetica', 'bold');
+      doc.setFont('times', 'bold');
       doc.setFontSize(8.5);
       y = ensureSpace(y, 12);
       doc.setTextColor(0, 0, 0);
@@ -868,7 +899,7 @@ function PDI({ onBack, onLogout }) {
         doc.rect(x, y, colW * groupStart, gH);
         doc.rect(x + colW * groupStart, y, colW * groupCount, gH);
         doc.setFontSize(6.5);
-        doc.setFont('helvetica', 'bold');
+        doc.setFont('times', 'bold');
         const gl = doc.splitTextToSize(groupLabel, colW * groupCount - 2);
         doc.text(gl, x + colW * groupStart + (colW * groupCount) / 2, y + 4, { align: 'center' });
         y += gH;
@@ -881,7 +912,7 @@ function PDI({ onBack, onLogout }) {
 
       const drawHeader = (hy) => {
         doc.setFontSize(6.5);
-        doc.setFont('helvetica', 'bold');
+        doc.setFont('times', 'bold');
         cols.forEach((c, i) => {
           const cx = x + colW * i;
           doc.rect(cx, hy, colW, headerH);
@@ -915,7 +946,7 @@ function PDI({ onBack, onLogout }) {
       y = drawHeader(y);
 
       // data rows
-      doc.setFont('helvetica', 'normal');
+      doc.setFont('times', 'normal');
       doc.setFontSize(7);
       rowsMeta.forEach((meta, ri) => {
         const { cellLinesArr, rowH } = meta;
@@ -926,7 +957,7 @@ function PDI({ onBack, onLogout }) {
           drawFooter();
           y = newPage(true);
           y = drawHeader(y);
-          doc.setFont('helvetica', 'normal');
+          doc.setFont('times', 'normal');
           doc.setFontSize(7);
         }
         cols.forEach((c, i) => {
@@ -1002,10 +1033,10 @@ function PDI({ onBack, onLogout }) {
     // Comments
     y = ensureSpace(y, 20);
     y += 4;
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('times', 'bold');
     doc.setFontSize(8.5);
     doc.text('Comments of the Committee:', margin, y);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('times', 'normal');
     const commentLines = doc.splitTextToSize(committeeComments || '', contentWidth - 60);
     doc.text(commentLines, margin + 58, y);
     y += Math.max(6, commentLines.length * 4) + 6;
@@ -1030,9 +1061,9 @@ function PDI({ onBack, onLogout }) {
         doc.setLineWidth(0.3);
         doc.line(cx - colW / 2 + 6, lineY, cx + colW / 2 - 6, lineY);
         doc.setFontSize(8);
-        doc.setFont('helvetica', 'bold');
+        doc.setFont('times', 'bold');
         doc.text(sig.name || '', cx, lineY + 5, { align: 'center' });
-        doc.setFont('helvetica', 'normal');
+        doc.setFont('times', 'normal');
         doc.setFontSize(7.5);
         const desLines = doc.splitTextToSize(sig.designation || '', colW - 6);
         doc.text(desLines, cx, lineY + 9, { align: 'center' });
@@ -1053,29 +1084,29 @@ function PDI({ onBack, onLogout }) {
     // Optional supplier firm name (italic) above the left block.
     doc.setFontSize(8.5);
     if (supplier.firmName) {
-      doc.setFont('helvetica', 'bolditalic');
+      doc.setFont('times', 'bolditalic');
       doc.text(supplier.firmName, margin, y);
     }
     y += 6;
 
     // Heading line of both blocks.
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('times', 'bold');
     doc.text('Signature of rep. of supplier firm', margin, y);
     doc.text('Signature of Inspector(s)', rightX, y);
 
     // Left block detail lines.
     let ly = y + 6;
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('times', 'bold');
     doc.text('With seal', margin, ly);
     ly += 6;
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('times', 'normal');
     doc.text(`Name: ${supplier.name || ''}`, margin, ly);
     ly += 6;
     doc.text(`Designation: ${supplier.designation || ''}`, margin, ly);
 
     // Right block detail lines.
     let ry = y + 6;
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('times', 'normal');
     doc.text(`Name: ${inspector.name || ''}`, rightX, ry);
     ry += 6;
     doc.text(`Designation: ${inspector.designation || ''}`, rightX, ry);
@@ -1106,7 +1137,7 @@ function PDI({ onBack, onLogout }) {
         drawFooter();
         let ly = newPage(false);
         doc.setFontSize(10);
-        doc.setFont('helvetica', 'bold');
+        doc.setFont('times', 'bold');
         doc.setTextColor(0, 0, 0);
         doc.text(title, pageWidth / 2, ly, { align: 'center' });
         ly += 6;
@@ -1119,7 +1150,7 @@ function PDI({ onBack, onLogout }) {
         // Header cells for each of the 3 blocks
         for (let c = 0; c < LIST_COLS; c++) {
           const cx = margin + c * blockW;
-          doc.setFont('helvetica', 'bold');
+          doc.setFont('times', 'bold');
           doc.setFontSize(7.5);
           doc.rect(cx, ly, countW, LIST_ROW_H);
           doc.rect(cx + countW, ly, idW, LIST_ROW_H);
@@ -1128,7 +1159,7 @@ function PDI({ onBack, onLogout }) {
         }
         const dataStartY = ly + LIST_ROW_H;
 
-        doc.setFont('helvetica', 'normal');
+        doc.setFont('times', 'normal');
         doc.setFontSize(7);
         pageIds.forEach((id, i) => {
           const col = Math.floor(i / rowsPerCol); // which of the 3 blocks
@@ -1165,10 +1196,40 @@ function PDI({ onBack, onLogout }) {
     drawIdListPages(listTitles.luminaire || 'LUMINAIRE SERIAL NUMBERS (ATTACHED LIST)', uniqueIds(luminaireList));
     drawCustomBulkFor('luminaire');
 
+    // ===== ADDITIONAL FREE-FORM PAGES =====
+    // Each extra page the user added via the "+" button is appended here as its
+    // own page and is included automatically in the page numbering.
+    extraPages.forEach((pg) => {
+      drawFooter();
+      let py = newPage(false);
+      const title = (pg.title || '').trim();
+      if (title) {
+        doc.setFontSize(11);
+        doc.setFont('times', 'bold');
+        doc.setTextColor(0, 0, 0);
+        const titleLines = doc.splitTextToSize(title, contentWidth);
+        doc.text(titleLines, pageWidth / 2, py, { align: 'center' });
+        py += titleLines.length * 5 + 4;
+      }
+      if ((pg.body || '').trim()) {
+        doc.setFontSize(10);
+        doc.setFont('times', 'normal');
+        const bodyLines = doc.splitTextToSize(pg.body, contentWidth);
+        bodyLines.forEach((ln) => {
+          py = ensureSpace(py, 6);
+          doc.text(ln, margin, py);
+          py += lineGap + 2;
+        });
+      }
+    });
+
     drawFooter();
 
+    // Stamp "Page X of Y" on every page once the total is known.
+    stampPageNumbers();
+
     return doc;
-  }, [layout, projectName, reportHeading, fields, additionalFields, workOrders, sampleCount, spvRows, batteryRows, luminaireRows, customSections, committeeComments, signatures, supplier, inspector, spvList, batteryList, luminaireList, customBulkSections, listTitles]);
+  }, [layout, projectName, reportHeading, fields, additionalFields, workOrders, sampleCount, spvRows, batteryRows, luminaireRows, customSections, committeeComments, signatures, supplier, inspector, spvList, batteryList, luminaireList, customBulkSections, listTitles, extraPages]);
 
   // Download the PDF using the current settings.
   const exportPDF = useCallback(() => {
@@ -1848,6 +1909,45 @@ function PDI({ onBack, onLogout }) {
             >
               <Send size={18} /> {submitting ? 'Submitting...' : 'Submit to Work Order'}
             </button>
+          </div>
+        </section>
+
+        {/* Additional free-form pages (appended to the report, auto page-numbered) */}
+        <section className="jcr-card">
+          <h3><FileText size={16} /> Additional Pages</h3>
+          <p className="jcr-hint">
+            Add extra pages to the end of the report. Each page is appended as its own
+            PDF page and is included automatically in the page numbering.
+          </p>
+
+          {extraPages.map((pg, idx) => (
+            <div className="jcr-field-block pdi-extra-page" key={pg.id}>
+              <div className="jcr-custom-head">
+                <input
+                  type="text"
+                  className="jcr-custom-title"
+                  value={pg.title}
+                  onChange={(e) => updateExtraPage(pg.id, 'title', e.target.value)}
+                  placeholder={`Page title (optional) — additional page ${idx + 1}`}
+                />
+                <button className="btn-remove-text" onClick={() => removeExtraPage(pg.id)}>
+                  <Trash2 size={14} /> Remove Page
+                </button>
+              </div>
+              <textarea
+                rows={6}
+                value={pg.body}
+                onChange={(e) => updateExtraPage(pg.id, 'body', e.target.value)}
+                placeholder="Page content (free text)"
+              />
+            </div>
+          ))}
+
+          <div className="jcr-add-bulk-bar">
+            <button className="btn-add-sm" onClick={addExtraPage}>
+              <Plus size={14} /> Add Page
+            </button>
+            <span className="jcr-hint">A new blank page is appended to the end of the PDF.</span>
           </div>
         </section>
 

@@ -52,6 +52,26 @@ const toLines = (v) => {
     .filter(Boolean);
 };
 
+/**
+ * Stamp "Page X of Y" centered at the bottom of every page, with a divider
+ * line above it. Call once after the whole document has been built so the
+ * total page count is known.
+ */
+const stampPageNumbers = (doc) => {
+  const total = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= total; i++) {
+    doc.setPage(i);
+    const footerY = PAGE_H - 12;
+    doc.setDrawColor(INK[0], INK[1], INK[2]);
+    doc.setLineWidth(0.3);
+    doc.line(MARGIN, footerY, PAGE_W - MARGIN, footerY);
+    doc.setFont(FONT, 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(INK[0], INK[1], INK[2]);
+    doc.text(`Page ${i} of ${total}`, PAGE_W / 2, footerY + 5, { align: 'center' });
+  }
+};
+
 /** Draw the bold, right-aligned "Format-X" tag at the very top-right. */
 const drawFormatTag = (doc, tag, y = 16) => {
   doc.setFont(FONT, 'bold');
@@ -270,6 +290,7 @@ const drawSignatures = (doc, formData, y) => {
 const buildDocument = (doc, formData) => {
   generateFormatII(doc, formData);
   generateFormatIIa(doc, formData);
+  stampPageNumbers(doc);
 };
 
 /** Generate and download the complete Material Report PDF */

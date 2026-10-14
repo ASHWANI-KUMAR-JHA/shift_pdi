@@ -61,6 +61,26 @@ const toLines = (v) => {
 // entry on its own line.
 const multiline = (v) => toLines(v).join('\n');
 
+/**
+ * Stamp "Page X of Y" centered at the bottom of every page, with a divider
+ * line above it. Call once after the whole document has been built so the
+ * total page count is known.
+ */
+const stampPageNumbers = (doc) => {
+  const total = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= total; i++) {
+    doc.setPage(i);
+    const footerY = PAGE_H - 12;
+    doc.setDrawColor(INK[0], INK[1], INK[2]);
+    doc.setLineWidth(0.3);
+    doc.line(MARGIN, footerY, PAGE_W - MARGIN, footerY);
+    doc.setFont(FONT, 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(INK[0], INK[1], INK[2]);
+    doc.text(`Page ${i} of ${total}`, PAGE_W / 2, footerY + 5, { align: 'center' });
+  }
+};
+
 /** Draw the bold, right-aligned "Format-X" tag at the very top-right. */
 const drawFormatTag = (doc, tag, y = 16) => {
   doc.setFont(FONT, 'bold');
@@ -331,13 +351,16 @@ const generateFormatIIIa = (doc, formData) => {
   doc.text(`Capacity of battery:  ${val(formData.batteryCapacity)} (Wh)`, rightColX, y);
   y += 8;
 
-  // Build the table body. The "Photographs of installations with latitude &
-  // longitude including date" column has been removed per the official form.
+  // Build the table body. Columns reproduce the official Format-III(a) exactly,
+  // including the "Photographs of installations with latitude & longitude
+  // including date" column.
   const installations = formData.installations || [];
   const body = installations.map((inst, idx) => {
     return [
       val(inst.serialNo) || String(idx + 1),
-      val(inst.beneficiaryName),
+      val(inst.exactLocation || inst.landmark || inst.beneficiaryName),
+      val(inst.latitude),
+      val(inst.longitude),
       val(inst.villageGramPanchayat),
       val(inst.block),
       val(inst.assemblyConstituency),
@@ -349,18 +372,21 @@ const generateFormatIIIa = (doc, formData) => {
     ];
   });
 
-  // Column widths (10 columns, photographs/lat/long/photo-date removed).
+  // Column widths (12 columns). Photographs column replaced by separate
+  // Latitude and Longitude columns.
   const columnStyles = {
-    0: { cellWidth: 11, halign: 'center' },  // S.No.
-    1: { cellWidth: 28 },                    // Exact location (land mark)
-    2: { cellWidth: 24 },                    // Village & Gram Panchayat
-    3: { cellWidth: 17 },                    // Block
-    4: { cellWidth: 22 },                    // Assembly constituency
-    5: { cellWidth: 18, halign: 'center' },  // Date of Commissioning
-    6: { cellWidth: 16 },                    // Module Serial Number
-    7: { cellWidth: 16 },                    // Battery Serial Number
-    8: { cellWidth: 16 },                    // Luminaire Serial Number
-    9: { cellWidth: 10, halign: 'center' },  // RMS
+    0: { cellWidth: 9, halign: 'center' },   // S. No.
+    1: { cellWidth: 22 },                    // Exact location (land mark)
+    2: { cellWidth: 15, halign: 'center' },  // Latitude
+    3: { cellWidth: 15, halign: 'center' },  // Longitude
+    4: { cellWidth: 18 },                    // Village & Gram Panchayat
+    5: { cellWidth: 13 },                    // Block
+    6: { cellWidth: 16 },                    // Assembly constituency
+    7: { cellWidth: 15, halign: 'center' },  // Date of Commissioning
+    8: { cellWidth: 13 },                    // Module Serial Number
+    9: { cellWidth: 13 },                    // Battery Serial Number
+    10: { cellWidth: 13 },                   // Luminaire Serial Number
+    11: { cellWidth: 9, halign: 'center' },  // RMS
   };
 
   autoTable(doc, {
@@ -369,6 +395,8 @@ const generateFormatIIIa = (doc, formData) => {
     head: [[
       'S. No.',
       'Exact location of installation (land mark)',
+      'Latitude',
+      'Longitude',
       'Name of village & Name of Gram Panchayat',
       'Name of Block',
       'Name of assembly constituency',
@@ -378,10 +406,10 @@ const generateFormatIIIa = (doc, formData) => {
       'Luminaire Serial Number',
       'RMS',
     ]],
-    body: body.length ? body : [['', '', '', '', '', '', '', '', '', '']],
+    body: body.length ? body : [['', '', '', '', '', '', '', '', '', '', '', '']],
     styles: {
       font: FONT,
-      fontSize: 7.5,
+      fontSize: 7,
       cellPadding: 1.5,
       textColor: INK,
       lineColor: INK,
@@ -392,7 +420,7 @@ const generateFormatIIIa = (doc, formData) => {
     },
     headStyles: {
       fontStyle: 'bold',
-      fontSize: 7,
+      fontSize: 6.5,
       halign: 'center',
       valign: 'middle',
       fillColor: [255, 255, 255],
@@ -408,16 +436,46 @@ const generateFormatIIIa = (doc, formData) => {
 
   let afterTableY = doc.lastAutoTable.finalY;
 
-  // The "Certified that:" note section has been removed per the official form.
-  const needed = 6 * 5 + 40;
+  // "Certified that:" note section with three sub-points, exactly as printed on
+  // the official Format-III(a).
+  const certNotes = [
+    '(i) Photographs of all installed systems have been retained by District Office in their record and photographs of at least 10% of the installed systems have been attached with this list; to be submitted with Directorate of New and Renewable Energy, Haryana.',
+    '(ii) All the above serial numbers of Module, Battery and Luminaire confirming to pre-dispatch inspection and material receipt have been entered in the RMS Portal.',
+    '(iii) Remote Monitoring System connectivity of all the above Street Lighting Systems have also been checked and a printout copy of RMS parameters including Bluetooth of at least 5% of the above Solar Street lights is attached.',
+  ];
+
+  // Estimate the vertical space the note + signatures need; break to a new page
+  // if it would not fit.
+  const needed = 70;
   if (afterTableY + needed > PAGE_H - MARGIN) {
     doc.addPage('a4', 'portrait');
     afterTableY = 24;
   } else {
-    afterTableY += 16;
+    afterTableY += 10;
   }
 
+  // Heading "Certified that :" (underlined, bold).
+  doc.setFont(FONT, 'bold');
+  doc.setFontSize(11);
+  doc.text('Certified that :', MARGIN, afterTableY);
+  const chW = doc.getTextWidth('Certified that :');
+  doc.setLineWidth(0.3);
+  doc.line(MARGIN, afterTableY + 1, MARGIN + chW, afterTableY + 1);
+  afterTableY += 7;
+
+  doc.setFont(FONT, 'normal');
+  doc.setFontSize(10);
+  certNotes.forEach((note) => {
+    const lines = doc.splitTextToSize(note, CONTENT_W - 6);
+    doc.text(lines, MARGIN + 6, afterTableY, { lineHeightFactor: 1.4 });
+    afterTableY += lines.length * 5 + 3;
+  });
+
   let y2 = afterTableY + 10;
+  if (y2 + 24 > PAGE_H - MARGIN) {
+    doc.addPage('a4', 'portrait');
+    y2 = 28;
+  }
 
   // Three signatures: Supplier, Beneficiary/Sarpanch, PO/APO.
   const third = CONTENT_W / 3;
@@ -446,6 +504,7 @@ const buildDocument = (doc, formData) => {
   // The JCR PDF produces Format-III and Format-III(a) only.
   generateFormatIII(doc, formData, false);
   generateFormatIIIa(doc, formData);
+  stampPageNumbers(doc);
 };
 
 /** Generate and download the complete JCR PDF */
