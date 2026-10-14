@@ -6,69 +6,70 @@ import { readSheetRows, extractIdList } from '../utils/spreadsheet';
 import { findOrCreateWorkOrder, insertWorkOrderItems } from '../utils/workorders';
 import './PDI.css';
 
-const DEFAULT_HEADING = 'FORMAT OF INSPECTION REPORT OF SOLAR STREET LIGHTING SYSTEM';
+const DEFAULT_HEADING = 'FORMAT FOR INSPECTION REPORT OF SOLAR STREET LIGHTING SYSTEM';
 const PDI_STORAGE_KEY = 'pdi-report-data';
 
 // General info field definitions (numbered label + editable value)
 const GENERAL_FIELDS = [
-  { key: 'department', no: '1', label: 'NAME OF THE DEPARTMENT', multiline: true },
-  { key: 'rateContractNo', no: '2 (i)', label: 'RATE CONTRACT NO & DATE', multiline: false },
-  // 2 (ii) WORK ORDER NO & DATE is a dynamic table, handled separately
-  { key: 'orderedQty', no: '3', label: 'ORDERED QUANTITY (NOS)', multiline: false },
-  { key: 'consigneeDept', no: '4', label: 'CONSIGNEE DEPARTMENT/OFFICE', multiline: true },
-  { key: 'companyName', no: '5', label: 'NAME OF THE COMPANY WHO OFFERED THE MATERIAL FOR INSPECTION', multiline: true },
-  { key: 'dateOfInspection', no: '6', label: 'DATE OF INSPECTION', multiline: false },
-  { key: 'systemsOffered', no: '7', label: 'NO. OF SYSTEMS OFFERED FOR INSPECTION', multiline: false },
-  { key: 'spvSerialNos', no: '8', label: 'SERIAL NO. OF SPV MODULES (PL ALSO ATTACH LIST OF MODULES AND MANUFACTURERS FOR PV MODULES EMPANELLED BY MNRE AS PER ITS ALMM ORDER)', multiline: true },
-  { key: 'luminaireSerialNos', no: '9', label: 'SERIAL NO OF LUMINAIRE (PI ATTACH LIST)', multiline: true },
-  { key: 'batterySerialNos', no: '10', label: 'SERIAL NO OF BATTERY (PI ATTACH LIST)', multiline: true },
+  { key: 'department', no: '1', label: 'Name of the Department', multiline: true },
+  { key: 'rateContractNo', no: '2 (i)', label: 'Rate Contract No. & date', multiline: false },
+  // 2 (ii) Work Order No. & Date is a dynamic table, handled separately
+  { key: 'orderedQty', no: '3', label: 'Ordered Quantity (Nos)', multiline: false },
+  { key: 'consigneeDept', no: '4', label: 'Consignee Department/Office', multiline: true },
+  { key: 'companyName', no: '5', label: 'Name of the Company who offered the material for inspection', multiline: true },
+  { key: 'dateOfInspection', no: '6', label: 'Date of inspection', multiline: false },
+  { key: 'systemsOffered', no: '7', label: 'No. of systems offered for inspection', multiline: false },
+  { key: 'spvSerialNos', no: '8', label: 'Serial No. of SPV Modules (Pl also attach List of Modules and Manufacturers for Solar PV Modules empanelled by MNRE as per its ALMM order)', multiline: true },
+  { key: 'luminaireSerialNos', no: '9', label: 'Serial No. of Luminaire (Pl attach list)', multiline: true },
+  { key: 'batterySerialNos', no: '10', label: 'Serial No. of Battery (Pl attach list)', multiline: true },
 ];
 
 const ADDITIONAL_FIELDS = [
-  { key: 'chargeController', no: '12', label: 'TYPE OF CHARGE CONTROLLER' },
-  { key: 'electronicEfficiency', no: '13', label: 'ELECTRONIC EFFICIENCY OF SYSTEM' },
-  { key: 'poleType', no: '14', label: 'TYPE OF POLE, LENGTH & OUTER DIA OF THE POLE' },
-  { key: 'cableType', no: '15', label: 'TYPE, MAKE, SIZE & STANDARD OF CABLE USED' },
-  { key: 'ledIndicator', no: '16', label: 'TWO LED INDICATOR (GREEN ON- CHARGING, RED ON- BATTERY DEEP DISCHARGE)' },
-  { key: 'rms', no: '17', label: 'REMOTE MONITORING SYSTEM (RMS) AS PER RATE CONTRACT' },
+  { key: 'chargeController', no: '12', label: 'Type of Charge Controller:' },
+  { key: 'electronicEfficiency', no: '13', label: 'Electronic Efficiency of system:' },
+  { key: 'poleType', no: '14', label: 'Type of Pole, length, outer dia and weight of the pole:' },
+  { key: 'cableType', no: '15', label: 'Type, Make, Size & Standard of Cable used:' },
+  { key: 'ledIndicator', no: '16', label: 'Two LED Indicator: (Green On – Charging, Red On-Battery Deep Discharge)' },
+  { key: 'rms', no: '17', label: 'Remote Monitoring System (RMS) as per rate contract:' },
 ];
 
 const SPV_COLS = [
-  { key: 'srNo', label: 'SR. NO OF SPV MODULE' },
-  { key: 'make', label: 'SPV MODULE MAKE' },
-  { key: 'type', label: 'TYPE OF MODULE' },
-  { key: 'wattageSpec', label: 'WATTAGE AS PER SPECIFICATION (IN WATT)' },
-  { key: 'voc', label: 'VOC', group: true },
-  { key: 'isc', label: 'ISC', group: true },
-  { key: 'wattage', label: 'WATTAGE', group: true },
-  { key: 'efficiency', label: 'EFFICIENCY', group: true },
+  { key: 'srNo', label: 'Sr. No. of SPV Module' },
+  { key: 'make', label: 'SPV Module Make' },
+  { key: 'type', label: 'Type of module' },
+  { key: 'wattageSpec', label: 'Wattage as per specification (in Watt)' },
+  { key: 'voc', label: 'Voltage (Open circuit VOC)', group: true },
+  { key: 'isc', label: 'Current (Short circuit ISC)', group: true },
+  { key: 'wattage', label: 'Wattage (in watt)', group: true },
+  { key: 'efficiency', label: 'Efficiency of PV module', group: true },
 ];
 
 // Columns for user-added custom sample tables (same layout as SPV module table)
 const CUSTOM_SAMPLE_COLS = [
-  { key: 'srNo', label: 'SR. NO' },
-  { key: 'make', label: 'MAKE' },
-  { key: 'type', label: 'TYPE' },
-  { key: 'wattageSpec', label: 'WATTAGE AS PER SPECIFICATION (IN WATT)' },
-  { key: 'voc', label: 'VOC', group: true },
-  { key: 'isc', label: 'ISC', group: true },
-  { key: 'wattage', label: 'WATTAGE', group: true },
-  { key: 'efficiency', label: 'EFFICIENCY', group: true },
+  { key: 'srNo', label: 'Sr. No.' },
+  { key: 'make', label: 'Make' },
+  { key: 'type', label: 'Type' },
+  { key: 'wattageSpec', label: 'Wattage as per specification (in Watt)' },
+  { key: 'voc', label: 'Voltage (Open circuit VOC)', group: true },
+  { key: 'isc', label: 'Current (Short circuit ISC)', group: true },
+  { key: 'wattage', label: 'Wattage (in watt)', group: true },
+  { key: 'efficiency', label: 'Efficiency of PV module', group: true },
 ];
 
 const BATTERY_COLS = [
-  { key: 'srNo', label: 'SR. NO OF BATTERY' },
-  { key: 'make', label: 'BATTERY MAKE' },
-  { key: 'type', label: 'TYPE OF BATTERY' },
-  { key: 'voltage', label: 'VOLTAGE' },
-  { key: 'capacity', label: 'CAPACITY' },
+  { key: 'srNo', label: 'Sr.No. of Battery' },
+  { key: 'make', label: 'Battery make' },
+  { key: 'type', label: 'Type of battery' },
+  { key: 'voltage', label: 'Voltage' },
+  { key: 'capacity', label: 'Capacity' },
 ];
 
 const LUMINAIRE_COLS = [
-  { key: 'srNo', label: 'SR. NO OF LUMINARIES' },
-  { key: 'make', label: 'LUMINARY MAKE' },
-  { key: 'power', label: 'POWER CONSUMPTION OF THE LUMINAIRE (IN WATT)' },
-  { key: 'noLoadCurrent', label: 'NO LOAD CURRENT OF LUMINAIRE (IN mA)' },
+  { key: 'srNo', label: 'Sr. No. of Luminaries' },
+  { key: 'make', label: 'Luminaire Make' },
+  { key: 'power', label: 'Power consumption of the Luminaire (In watt)' },
+  { key: 'noLoadCurrent', label: 'No Load current of Luminaire (In mA)' },
+  { key: 'remoteMonitoring', label: 'Remote Monitoring system' },
 ];
 
 // Component categories a custom section can belong to. In the exported report,
@@ -84,7 +85,7 @@ const COMPONENT_CATEGORIES = [
 const CATEGORY_CONFIG = {
   spv: {
     cols: CUSTOM_SAMPLE_COLS,
-    groupLabel: 'AS PER I-V CURVE OF SOLAR PV MODULE',
+    groupLabel: 'As per I-V Curve of Solar PV Module',
     makeEmpty: () => ({ srNo: '', make: '', type: '', wattageSpec: '', voc: '', isc: '', wattage: '', efficiency: '' }),
   },
   battery: {
@@ -95,7 +96,7 @@ const CATEGORY_CONFIG = {
   luminaire: {
     cols: LUMINAIRE_COLS,
     groupLabel: '',
-    makeEmpty: () => ({ srNo: '', make: '', power: '', noLoadCurrent: '' }),
+    makeEmpty: () => ({ srNo: '', make: '', power: '', noLoadCurrent: '', remoteMonitoring: '' }),
   },
 };
 
@@ -394,7 +395,7 @@ function PDI({ onBack, onLogout }) {
   useEffect(() => {
     setSpvRows(prev => resizeRows(prev, sampleCount, () => ({ srNo: '', make: '', type: '', wattageSpec: '', voc: '', isc: '', wattage: '', efficiency: '' })));
     setBatteryRows(prev => resizeRows(prev, sampleCount, () => ({ srNo: '', make: '', type: '', voltage: '', capacity: '' })));
-    setLuminaireRows(prev => resizeRows(prev, sampleCount, () => ({ srNo: '', make: '', power: '', noLoadCurrent: '' })));
+    setLuminaireRows(prev => resizeRows(prev, sampleCount, () => ({ srNo: '', make: '', power: '', noLoadCurrent: '', remoteMonitoring: '' })));
     setCustomSections(prev => prev.map(sec => ({
       ...sec,
       rows: resizeRows(sec.rows ?? [], sampleCount, getCategoryConfig(sec.category).makeEmpty),
@@ -941,7 +942,7 @@ function PDI({ onBack, onLogout }) {
       .filter(w => w.orderNo || w.date)
       .map(w => `${w.orderNo}${w.date ? '   DATED: ' + w.date : ''}`)
       .join('\n');
-    y = drawInfoRow(y, '2 (ii)', 'WORK ORDER NO & DATE', woValue);
+    y = drawInfoRow(y, '2 (ii)', 'Work Order No. & Date', woValue);
 
     // Fields 3..10
     for (let i = 2; i < GENERAL_FIELDS.length; i++) {
@@ -950,7 +951,7 @@ function PDI({ onBack, onLogout }) {
     }
 
     // Field 11
-    y = drawInfoRow(y, '11', 'NOS. OF SAMPLE TAKEN AT RANDOM FOR TESTING AS PER DETAILS GIVEN BELOW', String(sampleCount || ''));
+    y = drawInfoRow(y, '11', 'Nos. of sample taken at random for testing as per details given below:', String(sampleCount || ''));
 
     // Render custom sample sections belonging to a given component category.
     const drawCustomSectionsFor = (yPos, category) => {
@@ -971,11 +972,11 @@ function PDI({ onBack, onLogout }) {
     };
 
     // Sample tables — each component followed by its custom sections
-    y = drawTable(y, '(I) SPV MODULE:', SPV_COLS, spvRows.map((r, i) => ({ ...r, srNo: r.srNo || i + 1 })), 'AS PER I-V CURVE OF SOLAR PV MODULE');
+    y = drawTable(y, '(I) SPV MODULE', SPV_COLS, spvRows.map((r, i) => ({ ...r, srNo: r.srNo || i + 1 })), 'As per I-V Curve of Solar PV Module');
     y = drawCustomSectionsFor(y, 'spv');
-    y = drawTable(y, '(II) BATTERY:', BATTERY_COLS, batteryRows);
+    y = drawTable(y, '(II) BATTERY: -', BATTERY_COLS, batteryRows);
     y = drawCustomSectionsFor(y, 'battery');
-    y = drawTable(y, '(III) LUMINARIES:', LUMINAIRE_COLS, luminaireRows);
+    y = drawTable(y, '(III) LUMINARIES: -', LUMINAIRE_COLS, luminaireRows);
     y = drawCustomSectionsFor(y, 'luminaire');
 
     // ===== PAGE 2 (additional fields) =====
@@ -991,7 +992,7 @@ function PDI({ onBack, onLogout }) {
     y += 4;
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8.5);
-    doc.text('COMMENTS OF THE COMMITTEE:', margin, y);
+    doc.text('Comments of the Committee:', margin, y);
     doc.setFont('helvetica', 'normal');
     const commentLines = doc.splitTextToSize(committeeComments || '', contentWidth - 60);
     doc.text(commentLines, margin + 58, y);
@@ -1040,14 +1041,14 @@ function PDI({ onBack, onLogout }) {
       y += 6;
     }
     doc.setFont('helvetica', 'bold');
-    doc.text('SIGNATURE OF REP. OF SUPPLIER FIRM', margin, y);
+    doc.text('Signature of rep. of supplier firm', margin, y);
     y += 6;
-    doc.text('WITH SEAL', margin, y);
+    doc.text('With seal', margin, y);
     y += 6;
     doc.setFont('helvetica', 'normal');
-    doc.text(`NAME: ${supplier.name || ''}`, margin, y);
+    doc.text(`Name: ${supplier.name || ''}`, margin, y);
     y += 6;
-    doc.text(`DESIGNATION: ${supplier.designation || ''}`, margin, y);
+    doc.text(`Designation: ${supplier.designation || ''}`, margin, y);
 
     // ===== ATTACHED ID-LIST PAGES (bulk uploaded lists) =====
     // 3 side-by-side blocks of (COUNT | ID) with a readable fixed row height.
@@ -1391,17 +1392,17 @@ function PDI({ onBack, onLogout }) {
                 <table className="jcr-table">
                   <thead>
                     <tr>
-                      <th rowSpan={2}>SR. NO OF SPV MODULE</th>
-                      <th rowSpan={2}>SPV MODULE MAKE</th>
-                      <th rowSpan={2}>TYPE OF MODULE</th>
-                      <th rowSpan={2}>WATTAGE AS PER SPECIFICATION (IN WATT)</th>
-                      <th colSpan={4}>AS PER I-V CURVE OF SOLAR PV MODULE</th>
+                      <th rowSpan={2}>Sr. No. of SPV Module</th>
+                      <th rowSpan={2}>SPV Module Make</th>
+                      <th rowSpan={2}>Type of module</th>
+                      <th rowSpan={2}>Wattage as per specification (in Watt)</th>
+                      <th colSpan={4}>As per I-V Curve of Solar PV Module</th>
                     </tr>
                     <tr>
-                      <th>VOC</th>
-                      <th>ISC</th>
-                      <th>WATTAGE</th>
-                      <th>EFFICIENCY</th>
+                      <th>Voltage (Open circuit VOC)</th>
+                      <th>Current (Short circuit ISC)</th>
+                      <th>Wattage (in watt)</th>
+                      <th>Efficiency of PV module</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1423,16 +1424,16 @@ function PDI({ onBack, onLogout }) {
             </section>
 
             <section className="jcr-card">
-              <h3>(II) BATTERY</h3>
+              <h3>(II) BATTERY: -</h3>
               <div className="jcr-table-wrapper">
                 <table className="jcr-table">
                   <thead>
                     <tr>
-                      <th>SR. NO OF BATTERY</th>
-                      <th>BATTERY MAKE</th>
-                      <th>TYPE OF BATTERY</th>
-                      <th>VOLTAGE</th>
-                      <th>CAPACITY</th>
+                      <th>Sr.No. of Battery</th>
+                      <th>Battery make</th>
+                      <th>Type of battery</th>
+                      <th>Voltage</th>
+                      <th>Capacity</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1451,15 +1452,16 @@ function PDI({ onBack, onLogout }) {
             </section>
 
             <section className="jcr-card">
-              <h3>(III) LUMINARIES</h3>
+              <h3>(III) LUMINARIES: -</h3>
               <div className="jcr-table-wrapper">
                 <table className="jcr-table">
                   <thead>
                     <tr>
-                      <th>SR. NO OF LUMINARIES</th>
-                      <th>LUMINARY MAKE</th>
-                      <th>POWER CONSUMPTION (IN WATT)</th>
-                      <th>NO LOAD CURRENT (IN mA)</th>
+                      <th>Sr. No. of Luminaries</th>
+                      <th>Luminaire Make</th>
+                      <th>Power consumption of the Luminaire (In watt)</th>
+                      <th>No Load current of Luminaire (In mA)</th>
+                      <th>Remote Monitoring system</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1469,6 +1471,7 @@ function PDI({ onBack, onLogout }) {
                         <td><input value={row.make} onChange={(e) => updateLuminaire(idx, 'make', e.target.value)} /></td>
                         <td><input value={row.power} onChange={(e) => updateLuminaire(idx, 'power', e.target.value)} /></td>
                         <td><input value={row.noLoadCurrent} onChange={(e) => updateLuminaire(idx, 'noLoadCurrent', e.target.value)} /></td>
+                        <td><input value={row.remoteMonitoring || ''} onChange={(e) => updateLuminaire(idx, 'remoteMonitoring', e.target.value)} /></td>
                       </tr>
                     ))}
                   </tbody>
