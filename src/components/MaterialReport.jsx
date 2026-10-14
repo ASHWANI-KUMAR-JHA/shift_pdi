@@ -130,6 +130,58 @@ const MaterialReport = ({ onBack, onLogout }) => {
     setUnsavedChanges(false);
   };
 
+  // Fill the form with random test data to quickly preview the PDF.
+  const handleFillTestData = () => {
+    const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+    const randInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+    const pad = (n, len) => String(n).padStart(len, '0');
+    const randDate = () => {
+      const d = new Date(2025, randInt(0, 11), randInt(1, 28));
+      return d.toISOString().split('T')[0];
+    };
+
+    const districts = ['PANCHKULA', 'YAMUNANAGAR', 'AMBALA', 'KURUKSHETRA', 'KARNAL'];
+    const blocks = ['BARWALA', 'NARAINGARH', 'SAHA', 'SHAHZADPUR', 'MULLANA'];
+    const villages = ['RAIPUR', 'KANJALA', 'MANAKPUR', 'DHIN', 'GARNALA', 'KESRI'];
+    const moduleMakes = ['SENZA (SUN AND SAND EXIM)', 'JAKSON', 'WAAREE'];
+    const batteryMakes = ['SUNFEED', 'EXIDE', 'AMARON'];
+    const luminaireMakes = ['RITIKA', 'BAJAJ', 'CROMPTON'];
+
+    const count = randInt(6, 12);
+    const systems = count;
+
+    const materialItems = Array.from({ length: count }, (_, i) => ({
+      sno: String(i + 1),
+      moduleSerial: `MOD-${pad(randInt(1, 99999), 5)}`,
+      moduleMake: pick(moduleMakes),
+      batterySerial: `BAT-${pad(randInt(1, 99999), 5)}`,
+      batteryMake: pick(batteryMakes),
+      luminaireSerial: `LUM-${pad(randInt(1, 99999), 5)}`,
+      luminaireMake: pick(luminaireMakes),
+    }));
+
+    const district = pick(districts);
+    const block = pick(blocks);
+    const village = pick(villages);
+
+    setFormData({
+      district,
+      rateContractNo: `119/HR/RC/E-5/2025-26/${randInt(10000, 99999)} dated 29.01.2026`,
+      workOrderNo: `DNRE/2025-2026/${randInt(10000, 99999)} dated 18/02/2026, ${systems} nos`,
+      materialReceiptSystems: String(systems),
+      preDispatchInspectionDate: randDate(),
+      materialReceiptDate: randDate(),
+      invoiceNoDate: `INV-${pad(randInt(1, 9999), 4)} dated ${String(randInt(1, 28)).padStart(2, '0')}/02/2026`,
+      siteName: `VILLAGE: ${village}, GP: ${village}, BLOCK: ${block}`,
+      supplierName: 'M/S SUNFEED ECOSOLUTIONS INDIA PVT LTD, 527, FIFTH FLOOR, SECTOR-17, PANCHKULA, HARYANA - 134109',
+      supplierSignatoryName: pick(['Umesh Khatter', 'Rajesh Singh', 'Anil Sharma']),
+      poApoName: pick(['APO, PANCHKULA', 'PO, YAMUNANAGAR', 'APO, AMBALA']),
+      materialItems,
+    });
+    setUnsavedChanges(true);
+    setMessage({ type: 'success', text: `Filled test data with ${count} material item(s).` });
+  };
+
   /* ----------------------------- Validation ---------------------------- */
   const validateForm = () => {
     const required = [
@@ -225,6 +277,13 @@ const MaterialReport = ({ onBack, onLogout }) => {
         <div className="jcr-actions">
           <button className="btn btn-secondary" onClick={handleNewForm} title="Start a new form">
             <span className="btn-icon">+</span> New Form
+          </button>
+          <button
+            className="btn btn-secondary"
+            onClick={handleFillTestData}
+            title="Fill all fields with random test data to preview the PDF"
+          >
+            <span className="btn-icon">🎲</span> Fill Test Data
           </button>
           <button
             className="btn btn-secondary"
