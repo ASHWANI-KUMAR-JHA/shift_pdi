@@ -165,8 +165,8 @@ const generateFormatII = (doc, formData, addNewPage = false) => {
 /* Format-III : Format of Joint Commissioning Report (JCR)                     */
 /* -------------------------------------------------------------------------- */
 
-const generateFormatIII = (doc, formData) => {
-  doc.addPage('a4', 'portrait');
+const generateFormatIII = (doc, formData, addNewPage = true) => {
+  if (addNewPage) doc.addPage('a4', 'portrait');
 
   drawFormatTag(doc, 'Format-III');
 
@@ -461,9 +461,9 @@ const generateFormatIIIa = (doc, formData) => {
 /* -------------------------------------------------------------------------- */
 
 const buildDocument = (doc, formData) => {
-  // Format-II is drawn on the first (already existing) page.
-  generateFormatII(doc, formData, false);
-  generateFormatIII(doc, formData);
+  // Format-II (Material Receipt) now lives on the separate Material Report page.
+  // The JCR PDF produces Format-III and Format-III(a) only.
+  generateFormatIII(doc, formData, false);
   generateFormatIIIa(doc, formData);
 };
 

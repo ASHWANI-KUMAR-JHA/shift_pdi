@@ -4,6 +4,7 @@ import LetterGenerator from './components/LetterGenerator';
 import JCR from './components/JCR';
 import JCRSelect from './components/JCRSelect';
 import JCRTracking from './components/JCRTracking';
+import MaterialReport from './components/MaterialReport';
 import PDI from './components/PDI';
 import WorkOrders from './components/WorkOrders';
 import InstallationRegister from './components/InstallationRegister';
@@ -96,6 +97,11 @@ function App() {
   // Show the JCR Tracking (Work Order Book) page
   if (currentPage === 'jcrTracking') {
     return <JCRTracking onBack={goHome} onLogout={handleLogout} />;
+  }
+
+  // Show the Material Report (Format-II / Format-II(a)) page
+  if (currentPage === 'materialReport') {
+    return <MaterialReport onBack={goHome} onLogout={handleLogout} />;
   }
 
   // Show the PDI (Pre-Dispatch Inspection) page

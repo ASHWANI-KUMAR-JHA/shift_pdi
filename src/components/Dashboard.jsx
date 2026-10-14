@@ -39,6 +39,7 @@ const NAV_ITEMS = [
   { key: 'installations', label: 'Installations', icon: ClipboardList },
   { key: 'jcr', label: 'JCR', icon: FileCheck },
   { key: 'jcrSelect', label: 'JCR Select', icon: FileCheck },
+  { key: 'materialReport', label: 'Material Report', icon: Package },
   { key: 'pdi', label: 'PDI', icon: ClipboardCheck },
   { key: 'letterGenerator', label: 'Letters', icon: Mail },
   { key: 'users', label: 'Users', icon: Users },
@@ -86,6 +87,14 @@ const TOOLS = [
     tag: 'Reports',
   },
   {
+    key: 'materialReport',
+    title: 'Material Report',
+    description: 'Material Receipt (Format-II & II(a)) with PDF preview and export.',
+    icon: Package,
+    accent: 'teal',
+    tag: 'Reports',
+  },
+  {
     key: 'pdi',
     title: 'PDI',
     description: 'Run a Pre-Dispatch Inspection checklist before shipping.',
@@ -115,6 +124,7 @@ const QUICK_ACTIONS = [
   { key: 'jcrTracking', label: 'Work Order Tracking', icon: ClipboardList },
   { key: 'workOrders', label: 'New Work Order', icon: Package },
   { key: 'jcr', label: 'New JCR', icon: FileCheck },
+  { key: 'materialReport', label: 'Material Report', icon: Package },
   { key: 'pdi', label: 'Run PDI', icon: ClipboardCheck },
   { key: 'letterGenerator', label: 'Write a Letter', icon: Mail },
 ];

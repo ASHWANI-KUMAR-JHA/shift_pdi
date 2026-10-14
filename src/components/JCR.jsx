@@ -1074,36 +1074,6 @@ const JCR = ({ onBack, onLogout }) => {
           </div>
         </section>
 
-        {/* Section 3: Material Receipt */}
-        <section className="form-section">
-          <h2 className="section-title">
-            <span className="section-number">3</span>
-            Material Receipt Information
-            <span className="format-tag">Format-II</span>
-          </h2>
-          
-          <div className="form-grid">
-            <div className="form-field">
-              <ComboboxWithHistory
-                fieldId="jcr.preDispatchInspectionDate"
-                value={formData.preDispatchInspectionDate}
-                onChange={(value) => handleCommonFieldChange('preDispatchInspectionDate', value)}
-                label="Date of Pre-dispatch Inspection"
-                type="date"
-              />
-            </div>
-
-            <div className="form-field">
-              <ComboboxWithHistory
-                fieldId="jcr.materialReceiptDate"
-                value={formData.materialReceiptDate}
-                onChange={(value) => handleCommonFieldChange('materialReceiptDate', value)}
-                label="Date of Receipt of Material"
-                type="date"
-              />
-            </div>
-          </div>
-        </section>
 
         {/* Section 4: Signatures */}
         <section className="form-section">
