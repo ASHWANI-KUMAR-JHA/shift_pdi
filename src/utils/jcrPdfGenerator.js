@@ -62,22 +62,25 @@ const toLines = (v) => {
 const multiline = (v) => toLines(v).join('\n');
 
 /**
- * Stamp "Page X of Y" centered at the bottom of every page, with a divider
- * line above it. Call once after the whole document has been built so the
- * total page count is known.
+ * Stamp manually entered page-number labels, in order, centered near the
+ * bottom of each page. No footer divider line is drawn. Pass the labels from
+ * formData.pageNumbers (array of { label } or strings). If none are provided,
+ * nothing is stamped.
  */
-const stampPageNumbers = (doc) => {
+const stampPageNumbers = (doc, pageNumbers = []) => {
+  const labels = (pageNumbers || [])
+    .map((p) => String((p && p.label !== undefined ? p.label : p) ?? '').trim());
+  if (!labels.length) return;
   const total = doc.internal.getNumberOfPages();
-  for (let i = 1; i <= total; i++) {
+  const footerY = PAGE_H - 10;
+  for (let i = 1; i <= total && i <= labels.length; i++) {
+    const label = labels[i - 1];
+    if (!label) continue;
     doc.setPage(i);
-    const footerY = PAGE_H - 12;
-    doc.setDrawColor(INK[0], INK[1], INK[2]);
-    doc.setLineWidth(0.3);
-    doc.line(MARGIN, footerY, PAGE_W - MARGIN, footerY);
     doc.setFont(FONT, 'normal');
     doc.setFontSize(9);
     doc.setTextColor(INK[0], INK[1], INK[2]);
-    doc.text(`Page ${i} of ${total}`, PAGE_W / 2, footerY + 5, { align: 'center' });
+    doc.text(label, PAGE_W / 2, footerY, { align: 'center' });
   }
 };
 
@@ -504,7 +507,7 @@ const buildDocument = (doc, formData) => {
   // The JCR PDF produces Format-III and Format-III(a) only.
   generateFormatIII(doc, formData, false);
   generateFormatIIIa(doc, formData);
-  stampPageNumbers(doc);
+  stampPageNumbers(doc, formData.pageNumbers);
 };
 
 /** Generate and download the complete JCR PDF */

@@ -350,6 +350,13 @@ function PDI({ onBack, onLogout }) {
   // Each: { id, title, body }
   const [extraPages, setExtraPages] = useState(PERSISTED.extraPages ?? []);
 
+  // Manual page numbering. The user adds page-number labels (via the "+" button)
+  // in the order the pages appear. Each label is stamped (centered, no footer
+  // line) onto the matching page of the generated PDF. Leave empty to print no
+  // page numbers at all.
+  // Each: { id, label }
+  const [pageNumbers, setPageNumbers] = useState(PERSISTED.pageNumbers ?? []);
+
   const [committeeComments, setCommitteeComments] = useState(PERSISTED.committeeComments ?? 'Material verified and accepted.');
 
   // Supplier firm signature block (fixed block from the format)
@@ -425,7 +432,7 @@ function PDI({ onBack, onLogout }) {
       projectName, reportHeading, fields, additionalFields, workOrders,
       sampleCount, spvRows, batteryRows, luminaireRows, customSections, committeeComments,
       supplier, inspector, signatureCount, signatures, spvList, batteryList, luminaireList, customBulkSections,
-      layout, listTitles, extraPages,
+      layout, listTitles, extraPages, pageNumbers,
     };
     try {
       localStorage.setItem(PDI_STORAGE_KEY, JSON.stringify(data));
@@ -436,7 +443,7 @@ function PDI({ onBack, onLogout }) {
     projectName, reportHeading, fields, additionalFields, workOrders,
     sampleCount, spvRows, batteryRows, luminaireRows, customSections, committeeComments,
     supplier, inspector, signatureCount, signatures, spvList, batteryList, luminaireList, customBulkSections,
-    layout, listTitles, extraPages,
+    layout, listTitles, extraPages, pageNumbers,
   ]);
 
   // Export all current PDI data as a downloadable JSON file
@@ -445,7 +452,7 @@ function PDI({ onBack, onLogout }) {
       projectName, reportHeading, fields, additionalFields, workOrders,
       sampleCount, spvRows, batteryRows, luminaireRows, customSections, committeeComments,
       supplier, inspector, signatureCount, signatures, spvList, batteryList, luminaireList, customBulkSections,
-      layout, listTitles, extraPages,
+      layout, listTitles, extraPages, pageNumbers,
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -461,7 +468,7 @@ function PDI({ onBack, onLogout }) {
     projectName, reportHeading, fields, additionalFields, workOrders,
     sampleCount, spvRows, batteryRows, luminaireRows, customSections, committeeComments,
     supplier, inspector, signatureCount, signatures, spvList, batteryList, luminaireList, customBulkSections,
-    layout, listTitles, extraPages,
+    layout, listTitles, extraPages, pageNumbers,
   ]);
 
   // Load PDI data from a user-selected JSON file
@@ -492,6 +499,7 @@ function PDI({ onBack, onLogout }) {
         if (d.luminaireList) setLuminaireList(d.luminaireList);
         if (d.customBulkSections) setCustomBulkSections(d.customBulkSections);
         if (d.extraPages) setExtraPages(d.extraPages);
+        if (d.pageNumbers) setPageNumbers(d.pageNumbers);
         if (d.layout) setLayout(prev => ({ ...prev, ...d.layout }));
         if (d.listTitles) setListTitles(prev => ({ ...prev, ...d.listTitles }));
       } catch (err) {
@@ -626,6 +634,24 @@ function PDI({ onBack, onLogout }) {
   }, []);
   const updateExtraPage = useCallback((id, key, value) => {
     setExtraPages(prev => prev.map(p => (p.id === id ? { ...p, [key]: value } : p)));
+  }, []);
+
+  // Manual page-number handlers. "+" appends a new label pre-filled with the
+  // next sequential number so most reports just need the + button.
+  const addPageNumber = useCallback(() => {
+    setPageNumbers(prev => [
+      ...prev,
+      {
+        id: prev.length ? Math.max(...prev.map(p => p.id)) + 1 : 1,
+        label: String(prev.length + 1),
+      },
+    ]);
+  }, []);
+  const removePageNumber = useCallback((id) => {
+    setPageNumbers(prev => prev.filter(p => p.id !== id));
+  }, []);
+  const updatePageNumber = useCallback((id, label) => {
+    setPageNumbers(prev => prev.map(p => (p.id === id ? { ...p, label } : p)));
   }, []);
 
   const handleSupplier = useCallback((key, value) => {
@@ -787,25 +813,27 @@ function PDI({ onBack, onLogout }) {
 
     let pageNo = 0;
 
-    // Draws only the divider line per page. The "Page X of Y" label is stamped
-    // in a final pass (stampPageNumbers) once the total page count is known.
-    const drawFooter = () => {
-      const footerY = pageHeight - 14;
-      doc.setDrawColor(0, 0, 0);
-      doc.setLineWidth(0.3);
-      doc.line(margin, footerY, pageWidth - margin, footerY);
-    };
+    // No footer divider line is drawn (removed per requirement). Kept as a
+    // no-op so existing call sites don't need to change.
+    const drawFooter = () => {};
 
-    // Stamp "Page X of Y" centered under the divider on every page.
+    // Stamp the manually entered page-number labels, in order, centered near the
+    // bottom of each page. Pages beyond the list of labels get no number, and if
+    // no labels are entered nothing is stamped.
     const stampPageNumbers = () => {
+      const labels = (pageNumbers || [])
+        .map((p) => String(p.label ?? '').trim());
+      if (!labels.length) return;
       const total = doc.internal.getNumberOfPages();
-      const footerY = pageHeight - 14;
-      for (let i = 1; i <= total; i++) {
+      const footerY = pageHeight - 10;
+      for (let i = 1; i <= total && i <= labels.length; i++) {
+        const label = labels[i - 1];
+        if (!label) continue;
         doc.setPage(i);
-        doc.setFontSize(8);
+        doc.setFontSize(9);
         doc.setFont('times', 'normal');
         doc.setTextColor(0, 0, 0);
-        doc.text(`Page ${i} of ${total}`, pageWidth / 2, footerY + 5, { align: 'center' });
+        doc.text(label, pageWidth / 2, footerY, { align: 'center' });
       }
     };
 
@@ -1229,7 +1257,7 @@ function PDI({ onBack, onLogout }) {
     stampPageNumbers();
 
     return doc;
-  }, [layout, projectName, reportHeading, fields, additionalFields, workOrders, sampleCount, spvRows, batteryRows, luminaireRows, customSections, committeeComments, signatures, supplier, inspector, spvList, batteryList, luminaireList, customBulkSections, listTitles, extraPages]);
+  }, [layout, projectName, reportHeading, fields, additionalFields, workOrders, sampleCount, spvRows, batteryRows, luminaireRows, customSections, committeeComments, signatures, supplier, inspector, spvList, batteryList, luminaireList, customBulkSections, listTitles, extraPages, pageNumbers]);
 
   // Download the PDF using the current settings.
   const exportPDF = useCallback(() => {
@@ -1395,6 +1423,46 @@ function PDI({ onBack, onLogout }) {
               <FileText size={16} />
               <span>Preview PDF</span>
             </button>
+          </div>
+        </section>
+
+        {/* Manual page numbers */}
+        <section className="jcr-card">
+          <h3><FileText size={16} /> Page Numbers (Manual)</h3>
+          <p className="jcr-hint">
+            Add page-number labels in the order the pages appear in the PDF. Use the
+            <strong> +&nbsp;Add Page Number</strong> button, then edit each label (e.g. 1, 2, 3 or
+            i, ii). Leave this empty to print no page numbers. No footer line is drawn.
+          </p>
+
+          {pageNumbers.length > 0 && (
+            <div className="pdi-pagenum-grid">
+              {pageNumbers.map((p, idx) => (
+                <div className="pdi-pagenum-item" key={p.id}>
+                  <span className="pdi-pagenum-pos">Page {idx + 1}</span>
+                  <input
+                    type="text"
+                    value={p.label}
+                    onChange={(e) => updatePageNumber(p.id, e.target.value)}
+                    placeholder="Label (e.g. 1)"
+                  />
+                  <button
+                    className="btn-remove"
+                    onClick={() => removePageNumber(p.id)}
+                    title="Remove this page number"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="jcr-add-bulk-bar">
+            <button className="btn-add-sm" onClick={addPageNumber}>
+              <Plus size={14} /> Add Page Number
+            </button>
+            <span className="jcr-hint">Each label is stamped (centered) on the matching page, in order.</span>
           </div>
         </section>
 

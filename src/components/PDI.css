@@ -808,3 +808,31 @@
   border-color: #1565c0;
   background: #fff;
 }
+
+/* Manual page numbers */
+.pdi-pagenum-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 8px 0 12px;
+}
+
+.pdi-pagenum-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.pdi-pagenum-item .pdi-pagenum-pos {
+  font-size: 12px;
+  color: #64748b;
+  white-space: nowrap;
+}
+
+.pdi-pagenum-item input {
+  width: 72px;
+}
