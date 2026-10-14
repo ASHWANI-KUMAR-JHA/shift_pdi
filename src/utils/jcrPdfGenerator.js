@@ -190,7 +190,7 @@ const generateFormatIII = (doc, formData, addNewPage = true) => {
     ['Date of complete installation and commissioning of the system (s) by the firm', formatDate(formData.installationCompleteDate)],
     ['Date of Handing over the system(s) to the beneficiary', formatDate(formData.handoverDate)],
     [
-      'Site-wise list of installations\n(Name, Address, date of supply of system to the beneficiary, date of installation and commissioning of system at the site,\n\n(Separate list with compete details enclosed)',
+      'Site-wise list of installations\n(Name, Address, date of supply of system to the beneficiary, date of installation and commissioning of system at the site)',
       '',
     ],
   ];
@@ -331,15 +331,13 @@ const generateFormatIIIa = (doc, formData) => {
   doc.text(`Capacity of battery:  ${val(formData.batteryCapacity)} (Wh)`, rightColX, y);
   y += 8;
 
-  // Build the table body with separate lat/long columns (12 columns total).
+  // Build the table body. The "Photographs of installations with latitude &
+  // longitude including date" column has been removed per the official form.
   const installations = formData.installations || [];
   const body = installations.map((inst, idx) => {
     return [
       val(inst.serialNo) || String(idx + 1),
       val(inst.beneficiaryName),
-      val(inst.latitude),
-      val(inst.longitude),
-      formatDate(inst.photoDate),
       val(inst.villageGramPanchayat),
       val(inst.block),
       val(inst.assemblyConstituency),
@@ -351,21 +349,18 @@ const generateFormatIIIa = (doc, formData) => {
     ];
   });
 
-  // Column widths adjusted for separate lat/long columns
+  // Column widths (10 columns, photographs/lat/long/photo-date removed).
   const columnStyles = {
-    0: { cellWidth: 8, halign: 'center' },   // S.No.
-    1: { cellWidth: 22 },                    // Exact location (land mark)
-    2: { cellWidth: 14, halign: 'center' },  // Latitude
-    3: { cellWidth: 14, halign: 'center' },  // Longitude
-    4: { cellWidth: 14, halign: 'center' },  // Photo Date
-    5: { cellWidth: 18 },                    // Village & Gram Panchayat
-    6: { cellWidth: 13 },                    // Block
-    7: { cellWidth: 17 },                    // Assembly constituency
-    8: { cellWidth: 14, halign: 'center' },  // Date of Commissioning
-    9: { cellWidth: 11 },                    // Module Serial Number
-    10: { cellWidth: 10 },                   // Battery Serial Number
-    11: { cellWidth: 11 },                   // Luminaire Serial Number
-    12: { cellWidth: 8, halign: 'center' },  // RMS
+    0: { cellWidth: 11, halign: 'center' },  // S.No.
+    1: { cellWidth: 28 },                    // Exact location (land mark)
+    2: { cellWidth: 24 },                    // Village & Gram Panchayat
+    3: { cellWidth: 17 },                    // Block
+    4: { cellWidth: 22 },                    // Assembly constituency
+    5: { cellWidth: 18, halign: 'center' },  // Date of Commissioning
+    6: { cellWidth: 16 },                    // Module Serial Number
+    7: { cellWidth: 16 },                    // Battery Serial Number
+    8: { cellWidth: 16 },                    // Luminaire Serial Number
+    9: { cellWidth: 10, halign: 'center' },  // RMS
   };
 
   autoTable(doc, {
@@ -374,9 +369,6 @@ const generateFormatIIIa = (doc, formData) => {
     head: [[
       'S. No.',
       'Exact location of installation (land mark)',
-      'Latitude',
-      'Longitude',
-      'Photo Date',
       'Name of village & Name of Gram Panchayat',
       'Name of Block',
       'Name of assembly constituency',
@@ -386,21 +378,21 @@ const generateFormatIIIa = (doc, formData) => {
       'Luminaire Serial Number',
       'RMS',
     ]],
-    body: body.length ? body : [['', '', '', '', '', '', '', '', '', '', '', '', '']],
+    body: body.length ? body : [['', '', '', '', '', '', '', '', '', '']],
     styles: {
       font: FONT,
-      fontSize: 7,
+      fontSize: 7.5,
       cellPadding: 1.5,
       textColor: INK,
       lineColor: INK,
       lineWidth: LINE_W,
       valign: 'top',
       overflow: 'linebreak',
-      minCellHeight: 16,
+      minCellHeight: 14,
     },
     headStyles: {
       fontStyle: 'bold',
-      fontSize: 6.8,
+      fontSize: 7,
       halign: 'center',
       valign: 'middle',
       fillColor: [255, 255, 255],
@@ -411,32 +403,21 @@ const generateFormatIIIa = (doc, formData) => {
     columnStyles,
     margin: { left: MARGIN, right: MARGIN, top: 22, bottom: 20 },
     // Repeat the header on every page automatically.
-    // Repeat the header on every page automatically.
     showHead: 'everyPage',
   });
 
   let afterTableY = doc.lastAutoTable.finalY;
 
-  // Note (matches the official wording).
-  const noteText =
-    'Note: Photographs of all installed systems will be retained by District Office in their record and ' +
-    'at least 10% of the installed systems are to be attached with this list to be submitted with ' +
-    'Directorate of New and Renewable Energy, Haryana.';
-
-  // If the note + signatures would overflow the page, start a fresh page.
+  // The "Certified that:" note section has been removed per the official form.
   const needed = 6 * 5 + 40;
   if (afterTableY + needed > PAGE_H - MARGIN) {
     doc.addPage('a4', 'portrait');
     afterTableY = 24;
   } else {
-    afterTableY += 8;
+    afterTableY += 16;
   }
 
-  doc.setFont(FONT, 'normal');
-  doc.setFontSize(10.5);
-  const noteLines = doc.splitTextToSize(noteText, CONTENT_W);
-  doc.text(noteLines, MARGIN, afterTableY);
-  let y2 = afterTableY + noteLines.length * 5.5 + 24;
+  let y2 = afterTableY + 10;
 
   // Three signatures: Supplier, Beneficiary/Sarpanch, PO/APO.
   const third = CONTENT_W / 3;
