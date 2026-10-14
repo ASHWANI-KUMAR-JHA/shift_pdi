@@ -14,10 +14,12 @@ import {
   insertInstallations,
   updateInstallation,
   deleteInstallation,
+  resequenceInstallationsSno,
   parsePastedRows,
   parseUploadedFile,
 } from '../utils/installations';
 import { storePendingJCRImport } from '../utils/jcrDataTransfer';
+import { fetchAvailableWorkOrders } from '../utils/workOrderSync';
 import './InstallationRegister.css';
 
 // Fields shown as editable columns in the entry grid (excludes project/work order
@@ -26,17 +28,40 @@ const ROW_FIELDS = INSTALLATION_FIELDS.filter(
   (f) => f.key !== 'project_name' && f.key !== 'work_order'
 );
 
+// Visible grid columns exclude S.No — it is assigned incrementally in the
+// backend from the "S.No Start" value instead of typed per row.
+const GRID_FIELDS = ROW_FIELDS.filter((f) => f.key !== 'sno');
+
+// Given a start value and a zero-based index, return the incremented S.No.
+// If start is blank/non-numeric, falls back to the row's own sno value.
+function computeSno(snoStart, index, fallback) {
+  const base = String(snoStart ?? '').trim();
+  if (base !== '' && /^\d+$/.test(base)) {
+    return String(Number(base) + index);
+  }
+  return fallback ?? '';
+}
+
 function InstallationRegister({ onBack, onLogout }) {
   const [mode, setMode] = useState('entry'); // 'entry' | 'dashboard'
 
   // Shared identifiers (nullable)
   const [projectName, setProjectName] = useState('');
   const [workOrder, setWorkOrder] = useState('');
+  
+  // Available work orders from JCR Tracking
+  const [availableWorkOrders, setAvailableWorkOrders] = useState([]);
+  const [showWorkOrderDropdown, setShowWorkOrderDropdown] = useState(false);
+  const [workOrderSearch, setWorkOrderSearch] = useState('');
 
   // Entry rows
   const [rows, setRows] = useState([{ _id: 1, ...emptyInstallation() }]);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
+  // S.No starting value. When set to a number, every row's S.No is assigned
+  // incrementally in the backend (start, start+1, start+2 …) at save time, so
+  // the per-row S.No column is hidden.
+  const [snoStart, setSnoStart] = useState('');
 
   // Dashboard state — server-side paginated.
   const [records, setRecords] = useState([]);
@@ -49,6 +74,40 @@ function InstallationRegister({ onBack, onLogout }) {
   // Tracks whether the dashboard dataset has been fetched at least once, so we
   // don't hit the API again every time the user switches back to the dashboard.
   const [loaded, setLoaded] = useState(false);
+
+  // Load available work orders when component mounts or when switching to entry mode
+  useEffect(() => {
+    if (mode === 'entry') {
+      loadAvailableWorkOrders();
+    }
+  }, [mode]);
+
+  const loadAvailableWorkOrders = useCallback(async () => {
+    try {
+      const workOrders = await fetchAvailableWorkOrders();
+      setAvailableWorkOrders(workOrders);
+    } catch (err) {
+      console.error('Failed to load available work orders:', err);
+    }
+  }, []);
+
+  const handleSelectWorkOrder = useCallback((wo) => {
+    setWorkOrder(wo.work_order_no);
+    setProjectName(wo.project_name);
+    setShowWorkOrderDropdown(false);
+    setWorkOrderSearch('');
+  }, []);
+
+  const filteredWorkOrders = useMemo(() => {
+    if (!workOrderSearch) return availableWorkOrders;
+    const search = workOrderSearch.toLowerCase();
+    return availableWorkOrders.filter(
+      (wo) =>
+        wo.work_order_no.toLowerCase().includes(search) ||
+        wo.project_name.toLowerCase().includes(search) ||
+        wo.project_location.toLowerCase().includes(search)
+    );
+  }, [availableWorkOrders, workOrderSearch]);
 
   const addRow = useCallback(() => {
     setRows((prev) => [
@@ -127,20 +186,26 @@ function InstallationRegister({ onBack, onLogout }) {
     setSaving(true);
     setMessage(null);
     try {
-      const payload = rows.map((r) => ({ ...r, project_name: projectName, work_order: workOrder }));
+      const payload = rows.map((r, i) => ({
+        ...r,
+        project_name: projectName,
+        work_order: workOrder,
+        sno: computeSno(snoStart, i, r.sno),
+      }));
       const { inserted } = await insertInstallations(payload);
       if (inserted === 0) {
         setMessage({ type: 'error', text: 'Nothing to save. Fill at least one row.' });
       } else {
         setMessage({ type: 'success', text: `Saved ${inserted} installation(s) to Supabase.` });
         setRows([{ _id: 1, ...emptyInstallation() }]);
+        setSnoStart('');
       }
     } catch (err) {
       setMessage({ type: 'error', text: `Save failed: ${err.message}` });
     } finally {
       setSaving(false);
     }
-  }, [rows, projectName, workOrder]);
+  }, [rows, projectName, workOrder, snoStart]);
 
   // Fetch a single page from the server. Only hits the API for the requested
   // page + search term, so switching pages / searching triggers one call each.
@@ -252,6 +317,8 @@ function InstallationRegister({ onBack, onLogout }) {
             setProjectName={setProjectName}
             workOrder={workOrder}
             setWorkOrder={setWorkOrder}
+            snoStart={snoStart}
+            setSnoStart={setSnoStart}
             rows={rows}
             addRow={addRow}
             removeRow={removeRow}
@@ -261,6 +328,12 @@ function InstallationRegister({ onBack, onLogout }) {
             handleBulkUpload={handleBulkUpload}
             saving={saving}
             message={message}
+            availableWorkOrders={availableWorkOrders}
+            showWorkOrderDropdown={showWorkOrderDropdown}
+            setShowWorkOrderDropdown={setShowWorkOrderDropdown}
+            workOrderSearch={workOrderSearch}
+            setWorkOrderSearch={setWorkOrderSearch}
+            filteredWorkOrders={filteredWorkOrders}
           />
         ) : (
           <DashboardView
@@ -283,8 +356,10 @@ function InstallationRegister({ onBack, onLogout }) {
 }
 
 function EntryView({
-  projectName, setProjectName, workOrder, setWorkOrder,
+  projectName, setProjectName, workOrder, setWorkOrder, snoStart, setSnoStart,
   rows, addRow, removeRow, updateCell, handlePaste, handleSave, handleBulkUpload, saving, message,
+  availableWorkOrders, showWorkOrderDropdown, setShowWorkOrderDropdown, 
+  workOrderSearch, setWorkOrderSearch, filteredWorkOrders,
 }) {
   const fileInputRef = useRef(null);
 
@@ -307,13 +382,92 @@ function EntryView({
           />
         </div>
         <div className="id-field">
-          <label>Work Order <span className="opt">(optional)</span></label>
+          <label>S.No Start <span className="opt">(auto-increment)</span></label>
           <input
             type="text"
-            value={workOrder}
-            onChange={(e) => setWorkOrder(e.target.value)}
-            placeholder="e.g., WO/2026/00123"
+            inputMode="numeric"
+            value={snoStart}
+            onChange={(e) => setSnoStart(e.target.value.replace(/[^\d]/g, ''))}
+            placeholder="e.g., 2600"
           />
+          <span className="field-hint">
+            Rows get S.No {snoStart ? `${snoStart}, ${Number(snoStart) + 1}, ${Number(snoStart) + 2}…` : 'incrementally from this value'}
+          </span>
+        </div>
+        <div className="id-field work-order-selector">
+          <label>
+            Work Order <span className="opt">(optional)</span>
+            {availableWorkOrders.length > 0 && (
+              <span className="available-count">
+                {availableWorkOrders.length} available
+              </span>
+            )}
+          </label>
+          <div className="work-order-input-wrapper">
+            <input
+              type="text"
+              value={workOrder}
+              onChange={(e) => setWorkOrder(e.target.value)}
+              onFocus={() => setShowWorkOrderDropdown(true)}
+              placeholder="e.g., WO/2026/00123 or select from available"
+            />
+            {availableWorkOrders.length > 0 && (
+              <button
+                type="button"
+                className="btn-dropdown-toggle"
+                onClick={() => setShowWorkOrderDropdown(!showWorkOrderDropdown)}
+                title="Select from available work orders"
+              >
+                <ChevronDown size={16} />
+              </button>
+            )}
+          </div>
+          
+          {showWorkOrderDropdown && availableWorkOrders.length > 0 && (
+            <div className="work-order-dropdown">
+              <div className="dropdown-header">
+                <input
+                  type="text"
+                  className="dropdown-search"
+                  placeholder="Search work orders..."
+                  value={workOrderSearch}
+                  onChange={(e) => setWorkOrderSearch(e.target.value)}
+                  autoFocus
+                />
+                <button
+                  className="btn-close-dropdown"
+                  onClick={() => {
+                    setShowWorkOrderDropdown(false);
+                    setWorkOrderSearch('');
+                  }}
+                >
+                  <X size={14} />
+                </button>
+              </div>
+              <div className="dropdown-list">
+                {filteredWorkOrders.length === 0 ? (
+                  <div className="dropdown-empty">No matching work orders</div>
+                ) : (
+                  filteredWorkOrders.map((wo) => (
+                    <div
+                      key={wo.id}
+                      className="dropdown-item"
+                      onClick={() => handleSelectWorkOrder(wo)}
+                    >
+                      <div className="wo-number">{wo.work_order_no}</div>
+                      <div className="wo-details">
+                        <div className="wo-project">{wo.project_name}</div>
+                        <div className="wo-location">{wo.project_location}</div>
+                        {wo.lights_count && (
+                          <div className="wo-lights">{wo.lights_count} lights</div>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -347,16 +501,20 @@ function EntryView({
         <table className="entry-table">
           <thead>
             <tr>
-              {ROW_FIELDS.map((f) => (
+              <th>S.No.</th>
+              {GRID_FIELDS.map((f) => (
                 <th key={f.key}>{f.label}</th>
               ))}
               <th className="action-col">Action</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
+            {rows.map((row, index) => (
               <tr key={row._id}>
-                {ROW_FIELDS.map((f) => (
+                <td className="sno-cell">
+                  <span className="sno-preview">{computeSno(snoStart, index, row.sno) || '—'}</span>
+                </td>
+                {GRID_FIELDS.map((f) => (
                   <td key={f.key}>
                     <input
                       type="text"
@@ -422,6 +580,9 @@ function DashboardView({
   const [editError, setEditError] = useState(null);
   // Selected records for JCR submission
   const [selectedIds, setSelectedIds] = useState(new Set());
+  // Bulk S.No assignment state.
+  const [snoStart, setSnoStart] = useState('');
+  const [assigningSno, setAssigningSno] = useState(false);
 
   const toggleSelect = useCallback((id) => {
     setSelectedIds(prev => {
@@ -644,6 +805,32 @@ function DashboardView({
     }
   }, [search]);
 
+  // Resequence S.No for ALL installations (matching the current search),
+  // ordered by date. The oldest record gets the entered start value and every
+  // later record increments by one.
+  const handleAssignSno = useCallback(async () => {
+    const base = String(snoStart).trim();
+    if (!/^\d+$/.test(base)) {
+      alert('Enter a numeric S.No start value (e.g., 2600).');
+      return;
+    }
+    if (!window.confirm(
+      `Renumber S.No for all ${total} installation(s)${search ? ' matching the search' : ''}, ordered by date, starting from ${base}?\n\nThe earliest record becomes ${base} and each later record increments by one.`
+    )) return;
+
+    setAssigningSno(true);
+    try {
+      const { updated } = await resequenceInstallationsSno({ start: Number(base), search });
+      setSnoStart('');
+      await loadRecords({ page });
+      alert(`Updated S.No for ${updated} installation(s).`);
+    } catch (err) {
+      alert(`Failed to assign S.No: ${err.message}`);
+    } finally {
+      setAssigningSno(false);
+    }
+  }, [snoStart, search, total, loadRecords, page]);
+
   return (
     <>
       <div className="stats-row">
@@ -681,6 +868,25 @@ function DashboardView({
         >
           <Send size={16} /> Submit to JCR ({selectedIds.size})
         </button>
+        <div className="sno-assign">
+          <input
+            type="text"
+            inputMode="numeric"
+            className="sno-assign-input"
+            value={snoStart}
+            onChange={(e) => setSnoStart(e.target.value.replace(/[^\d]/g, ''))}
+            placeholder="S.No start"
+            title="Renumber all installations by date from this value"
+          />
+          <button
+            className="btn-assign-sno"
+            onClick={handleAssignSno}
+            disabled={assigningSno || !snoStart}
+            title="Renumber S.No for all installations, ordered by date"
+          >
+            {assigningSno ? 'Updating…' : 'Set S.No (all, by date)'}
+          </button>
+        </div>
       </div>
 
       <div className="dash-filters">

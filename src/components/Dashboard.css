@@ -741,6 +741,8 @@
 .accent-violet .tool-icon { background: linear-gradient(135deg, #8b5cf6, #7c3aed); }
 .accent-amber .stat-icon, .accent-amber .tool-icon { background: linear-gradient(135deg, #fbbf24, #f59e0b); }
 .accent-rose .tool-icon { background: linear-gradient(135deg, #fb7185, #e11d48); }
+.accent-red .tool-icon, .accent-red .stat-icon { background: linear-gradient(135deg, #ef4444, #dc2626); }
+.accent-emerald .tool-icon, .accent-emerald .stat-icon { background: linear-gradient(135deg, #10b981, #059669); }
 .accent-slate .tool-icon { background: linear-gradient(135deg, #64748b, #475569); }
 
 /* ------------------------------------------------------------------ */

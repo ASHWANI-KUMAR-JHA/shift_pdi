@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { readSheetRows, textToRows } from './spreadsheet';
+import { releaseInstallationWorkOrderItems } from './workorders';
 
 // Table name in Supabase
 export const INSTALLATIONS_TABLE = 'installations';
@@ -191,12 +192,110 @@ export async function updateInstallation(id, row) {
   return data?.[0] || null;
 }
 
+// Compute the next incremental S.No for a work order. Looks at existing
+// installations for the given work order, finds the highest numeric S.No and
+// returns the next value as a string. If there are none (or none are numeric),
+// returns '1'. Used by the public form so field staff don't enter S.No.
+export async function getNextSnoForWorkOrder(workOrder) {
+  const wo = String(workOrder || '').trim();
+  if (!wo) return '1';
+  const { data, error } = await supabase
+    .from(INSTALLATIONS_TABLE)
+    .select('sno')
+    .eq('work_order', wo);
+  if (error) throw error;
+  let max = 0;
+  for (const row of data || []) {
+    const n = parseInt(String(row.sno ?? '').trim(), 10);
+    if (Number.isFinite(n) && n > max) max = n;
+  }
+  return String(max + 1);
+}
+
+// Reassign S.No to ALL installations (matching an optional search), ordered by
+// date, starting from `start`. The oldest record gets `start`, the next gets
+// `start + 1`, and so on. Returns { updated }.
+// `orderBy` defaults to 'created_at' (chronological). Updates run in batches of
+// equal values grouped by the new sno via individual updates.
+export async function resequenceInstallationsSno({ start, search = '', orderBy = 'created_at' } = {}) {
+  const base = Number(start);
+  if (!Number.isFinite(base)) throw new Error('Start value must be a number.');
+
+  // Fetch every matching row (paging past the 1000-row cap), ordered by date
+  // ascending so the earliest installation receives the starting number.
+  const batchSize = 1000;
+  let from = 0;
+  const all = [];
+  for (;;) {
+    let query = supabase
+      .from(INSTALLATIONS_TABLE)
+      .select('id, created_at')
+      .order(orderBy, { ascending: true })
+      .range(from, from + batchSize - 1);
+    query = applySearch(query, search);
+    const { data, error } = await query;
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    all.push(...data);
+    if (data.length < batchSize) break;
+    from += batchSize;
+  }
+
+  if (all.length === 0) return { updated: 0 };
+
+  // Assign sequential S.No values and update each row.
+  let updated = 0;
+  let n = base;
+  for (const row of all) {
+    const { error } = await supabase
+      .from(INSTALLATIONS_TABLE)
+      .update({ sno: String(n) })
+      .eq('id', row.id);
+    if (error) throw error;
+    updated += 1;
+    n += 1;
+  }
+  return { updated };
+}
+
+// Set RMS status for many installation records at once.
+export async function setInstallationsRms(ids, rms = 'YES') {
+  const list = (ids || []).filter(Boolean);
+  if (list.length === 0) return { updated: 0 };
+  const { data, error } = await supabase
+    .from(INSTALLATIONS_TABLE)
+    .update({ rms })
+    .in('id', list)
+    .select();
+  if (error) throw error;
+  return { updated: data?.length || 0, data: data || [] };
+}
+
 export async function deleteInstallation(id) {
+  // Load the row first so we can release its work order serials after deletion.
+  const { data: existing } = await supabase
+    .from(INSTALLATIONS_TABLE)
+    .select('work_order, module_serial, battery_serial, luminaire_serial')
+    .eq('id', id)
+    .limit(1);
+  const row = existing?.[0] || null;
+
   const { error } = await supabase
     .from(INSTALLATIONS_TABLE)
     .delete()
     .eq('id', id);
   if (error) throw error;
+
+  // Mark the consumed work order items as available again. Non-fatal: the
+  // installation is already deleted, so a release failure shouldn't surface
+  // as a delete failure.
+  if (row) {
+    try {
+      await releaseInstallationWorkOrderItems(row);
+    } catch (err) {
+      console.warn('Could not release work order items on delete:', err);
+    }
+  }
 }
 
 // Parse pasted tabular data (TSV from Excel / Google Sheets or CSV).

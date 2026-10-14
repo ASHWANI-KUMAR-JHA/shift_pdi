@@ -318,3 +318,53 @@ export async function checkMultipleSerialsUsage(serials, category) {
 
   return result;
 }
+
+// Mark several items as available in a single request (reverse of markItemsUsed).
+export async function markItemsAvailable(ids) {
+  const list = (ids || []).filter(Boolean);
+  if (list.length === 0) return { updated: 0 };
+  const { data, error } = await supabase
+    .from(WORK_ORDER_ITEMS_TABLE)
+    .update({ status: 'available', used_by: null, used_at: null })
+    .in('id', list)
+    .select();
+  if (error) throw error;
+  return { updated: data?.length || 0 };
+}
+
+// Release the work order item serials consumed by an installation record,
+// marking them back to "available". Called when an installation is deleted so
+// its module / battery / luminaire serials become usable again.
+// `installation` is a row with work_order + the three *_serial fields.
+export async function releaseInstallationWorkOrderItems(installation) {
+  if (!installation) return { released: 0 };
+  const workOrderNo = String(installation.work_order || '').trim();
+  if (!workOrderNo) return { released: 0 };
+
+  // Locate the shared serial pool for this work order number.
+  const workOrder = await findWorkOrderByOrderNumber(workOrderNo);
+  if (!workOrder) return { released: 0 };
+
+  const wanted = [
+    { category: 'module', serial: String(installation.module_serial || '').trim() },
+    { category: 'battery', serial: String(installation.battery_serial || '').trim() },
+    { category: 'luminaire', serial: String(installation.luminaire_serial || '').trim() },
+  ].filter((w) => w.serial);
+  if (wanted.length === 0) return { released: 0 };
+
+  const items = await fetchWorkOrderItems(workOrder.id);
+  const ids = [];
+  for (const { category, serial } of wanted) {
+    const lower = serial.toLowerCase();
+    const match = items.find(
+      (it) =>
+        it.category === category &&
+        String(it.serial).toLowerCase() === lower &&
+        it.status === 'used'
+    );
+    if (match) ids.push(match.id);
+  }
+
+  const { updated } = await markItemsAvailable(ids);
+  return { released: updated };
+}
