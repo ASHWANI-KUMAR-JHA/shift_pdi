@@ -408,6 +408,10 @@ function PDI({ onBack, onLogout }) {
   const [previewUrl, setPreviewUrl] = useState(null);
   const [showPreview, setShowPreview] = useState(false);
 
+  // Total number of pages in the most recently built PDF. Used by the manual
+  // page-number UI so you can number every page according to the real total.
+  const [totalPages, setTotalPages] = useState(0);
+
   const fileInputRef = useRef(null);
 
   // Keep sample tables sized to sampleCount
@@ -653,6 +657,27 @@ function PDI({ onBack, onLogout }) {
   const updatePageNumber = useCallback((id, label) => {
     setPageNumbers(prev => prev.map(p => (p.id === id ? { ...p, label } : p)));
   }, []);
+  // Create one label slot per page (1, 2, 3 … up to the current total pages),
+  // so every page gets numbered according to the real total. Existing labels
+  // are preserved where present; extra slots beyond the total are dropped.
+  const fillPageNumbersForAllPages = useCallback(() => {
+    const n = totalPages || 0;
+    if (!n) {
+      setSubmitMessage({ type: 'error', text: 'Open Preview PDF (or Export) once so the total page count is known, then click again.' });
+      return;
+    }
+    setPageNumbers((prev) => {
+      const out = [];
+      for (let i = 0; i < n; i++) {
+        const existing = prev[i];
+        out.push({
+          id: i + 1,
+          label: existing && String(existing.label ?? '').trim() ? existing.label : String(i + 1),
+        });
+      }
+      return out;
+    });
+  }, [totalPages]);
 
   const handleSupplier = useCallback((key, value) => {
     setSupplier(prev => ({ ...prev, [key]: value }));
@@ -1253,8 +1278,12 @@ function PDI({ onBack, onLogout }) {
 
     drawFooter();
 
-    // Stamp "Page X of Y" on every page once the total is known.
+    // Stamp the manual page-number labels (in order) once all pages exist.
     stampPageNumbers();
+
+    // Record the real page count so the manual page-number UI can show it and
+    // let you number every page according to the total.
+    setTotalPages(doc.internal.getNumberOfPages());
 
     return doc;
   }, [layout, projectName, reportHeading, fields, additionalFields, workOrders, sampleCount, spvRows, batteryRows, luminaireRows, customSections, committeeComments, signatures, supplier, inspector, spvList, batteryList, luminaireList, customBulkSections, listTitles, extraPages, pageNumbers]);
@@ -1434,6 +1463,11 @@ function PDI({ onBack, onLogout }) {
             <strong> +&nbsp;Add Page Number</strong> button, then edit each label (e.g. 1, 2, 3 or
             i, ii). Leave this empty to print no page numbers. No footer line is drawn.
           </p>
+          <p className="jcr-hint">
+            {totalPages
+              ? <>The last built PDF has <strong>{totalPages}</strong> page{totalPages === 1 ? '' : 's'}. You have added <strong>{pageNumbers.length}</strong> label{pageNumbers.length === 1 ? '' : 's'}.</>
+              : <>Open <strong>Preview PDF</strong> once to detect the total number of pages.</>}
+          </p>
 
           {pageNumbers.length > 0 && (
             <div className="pdi-pagenum-grid">
@@ -1461,6 +1495,13 @@ function PDI({ onBack, onLogout }) {
           <div className="jcr-add-bulk-bar">
             <button className="btn-add-sm" onClick={addPageNumber}>
               <Plus size={14} /> Add Page Number
+            </button>
+            <button
+              className="btn-add-sm"
+              onClick={fillPageNumbersForAllPages}
+              title="Create one numbered label per page (1..N) for the whole PDF"
+            >
+              <Plus size={14} /> Number All Pages{totalPages ? ` (${totalPages})` : ''}
             </button>
             <span className="jcr-hint">Each label is stamped (centered) on the matching page, in order.</span>
           </div>
