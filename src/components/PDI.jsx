@@ -27,7 +27,7 @@ const GENERAL_FIELDS = [
 const ADDITIONAL_FIELDS = [
   { key: 'chargeController', no: '12', label: 'Type of Charge Controller:' },
   { key: 'electronicEfficiency', no: '13', label: 'Electronic Efficiency of system:' },
-  { key: 'poleType', no: '14', label: 'Type of Pole, length, outer dia and weight of the pole:' },
+  { key: 'poleType', no: '14', label: 'Type of Pole, length, wall thickness, outer dia and weight of the pole:' },
   { key: 'cableType', no: '15', label: 'Type, Make, Size & Standard of Cable used:' },
   { key: 'ledIndicator', no: '16', label: 'Two LED Indicator: (Green On – Charging, Red On-Battery Deep Discharge)' },
   { key: 'rms', no: '17', label: 'Remote Monitoring System (RMS) as per rate contract:' },
@@ -354,6 +354,13 @@ function PDI({ onBack, onLogout }) {
     designation: '',
   });
 
+  // Inspector signature block (fixed block from the format — right side)
+  const [inspector, setInspector] = useState(PERSISTED.inspector ?? {
+    name: '',
+    designation: '',
+    office: '',
+  });
+
   // Signatures (committee members)
   const [signatureCount, setSignatureCount] = useState(PERSISTED.signatureCount ?? 0);
   const [signatures, setSignatures] = useState(PERSISTED.signatures ?? []);
@@ -412,7 +419,7 @@ function PDI({ onBack, onLogout }) {
     const data = {
       projectName, reportHeading, fields, additionalFields, workOrders,
       sampleCount, spvRows, batteryRows, luminaireRows, customSections, committeeComments,
-      supplier, signatureCount, signatures, spvList, batteryList, luminaireList, customBulkSections,
+      supplier, inspector, signatureCount, signatures, spvList, batteryList, luminaireList, customBulkSections,
       layout, listTitles,
     };
     try {
@@ -423,7 +430,7 @@ function PDI({ onBack, onLogout }) {
   }, [
     projectName, reportHeading, fields, additionalFields, workOrders,
     sampleCount, spvRows, batteryRows, luminaireRows, customSections, committeeComments,
-    supplier, signatureCount, signatures, spvList, batteryList, luminaireList, customBulkSections,
+    supplier, inspector, signatureCount, signatures, spvList, batteryList, luminaireList, customBulkSections,
     layout, listTitles,
   ]);
 
@@ -432,7 +439,7 @@ function PDI({ onBack, onLogout }) {
     const data = {
       projectName, reportHeading, fields, additionalFields, workOrders,
       sampleCount, spvRows, batteryRows, luminaireRows, customSections, committeeComments,
-      supplier, signatureCount, signatures, spvList, batteryList, luminaireList, customBulkSections,
+      supplier, inspector, signatureCount, signatures, spvList, batteryList, luminaireList, customBulkSections,
       layout, listTitles,
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -448,7 +455,7 @@ function PDI({ onBack, onLogout }) {
   }, [
     projectName, reportHeading, fields, additionalFields, workOrders,
     sampleCount, spvRows, batteryRows, luminaireRows, customSections, committeeComments,
-    supplier, signatureCount, signatures, spvList, batteryList, luminaireList, customBulkSections,
+    supplier, inspector, signatureCount, signatures, spvList, batteryList, luminaireList, customBulkSections,
     layout, listTitles,
   ]);
 
@@ -471,6 +478,7 @@ function PDI({ onBack, onLogout }) {
         if (d.luminaireRows) setLuminaireRows(d.luminaireRows);
         if (d.committeeComments !== undefined) setCommitteeComments(d.committeeComments);
         if (d.supplier) setSupplier(d.supplier);
+        if (d.inspector) setInspector(d.inspector);
         if (d.signatureCount !== undefined) setSignatureCount(d.signatureCount);
         if (d.signatures) setSignatures(d.signatures);
         if (d.customSections) setCustomSections(d.customSections);
@@ -602,6 +610,10 @@ function PDI({ onBack, onLogout }) {
 
   const handleSupplier = useCallback((key, value) => {
     setSupplier(prev => ({ ...prev, [key]: value }));
+  }, []);
+
+  const handleInspector = useCallback((key, value) => {
+    setInspector(prev => ({ ...prev, [key]: value }));
   }, []);
 
   // Bulk upload handlers for the three attached ID lists.
@@ -1031,24 +1043,46 @@ function PDI({ onBack, onLogout }) {
       }
     }
 
-    // Supplier firm signature block (SIGNATURE OF REP. OF SUPPLIER FIRM / WITH SEAL / NAME / DESIGNATION)
-    y = ensureSpace(y, 34);
+    // Two signature blocks side by side, exactly like the form:
+    //   Left  = Signature of rep. of supplier firm / With seal / Name / Designation
+    //   Right = Signature of Inspector(s) / Name / Designation / Office/ Deptt
+    y = ensureSpace(y, 40);
     y += 6;
+    const rightX = margin + contentWidth / 2;
+
+    // Optional supplier firm name (italic) above the left block.
     doc.setFontSize(8.5);
-    doc.setFont('helvetica', 'bolditalic');
     if (supplier.firmName) {
+      doc.setFont('helvetica', 'bolditalic');
       doc.text(supplier.firmName, margin, y);
-      y += 6;
     }
+    y += 6;
+
+    // Heading line of both blocks.
     doc.setFont('helvetica', 'bold');
     doc.text('Signature of rep. of supplier firm', margin, y);
-    y += 6;
-    doc.text('With seal', margin, y);
-    y += 6;
+    doc.text('Signature of Inspector(s)', rightX, y);
+
+    // Left block detail lines.
+    let ly = y + 6;
+    doc.setFont('helvetica', 'bold');
+    doc.text('With seal', margin, ly);
+    ly += 6;
     doc.setFont('helvetica', 'normal');
-    doc.text(`Name: ${supplier.name || ''}`, margin, y);
-    y += 6;
-    doc.text(`Designation: ${supplier.designation || ''}`, margin, y);
+    doc.text(`Name: ${supplier.name || ''}`, margin, ly);
+    ly += 6;
+    doc.text(`Designation: ${supplier.designation || ''}`, margin, ly);
+
+    // Right block detail lines.
+    let ry = y + 6;
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Name: ${inspector.name || ''}`, rightX, ry);
+    ry += 6;
+    doc.text(`Designation: ${inspector.designation || ''}`, rightX, ry);
+    ry += 6;
+    doc.text(`Office/ Deptt: ${inspector.office || ''}`, rightX, ry);
+
+    y = Math.max(ly, ry);
 
     // ===== ATTACHED ID-LIST PAGES (bulk uploaded lists) =====
     // 3 side-by-side blocks of (COUNT | ID) with a readable fixed row height.
@@ -1134,7 +1168,7 @@ function PDI({ onBack, onLogout }) {
     drawFooter();
 
     return doc;
-  }, [layout, projectName, reportHeading, fields, additionalFields, workOrders, sampleCount, spvRows, batteryRows, luminaireRows, customSections, committeeComments, signatures, supplier, spvList, batteryList, luminaireList, customBulkSections, listTitles]);
+  }, [layout, projectName, reportHeading, fields, additionalFields, workOrders, sampleCount, spvRows, batteryRows, luminaireRows, customSections, committeeComments, signatures, supplier, inspector, spvList, batteryList, luminaireList, customBulkSections, listTitles]);
 
   // Download the PDF using the current settings.
   const exportPDF = useCallback(() => {
@@ -1622,6 +1656,38 @@ function PDI({ onBack, onLogout }) {
               value={supplier.designation}
               onChange={(e) => handleSupplier('designation', e.target.value)}
               placeholder="e.g., GENERAL MANAGER"
+            />
+          </div>
+        </section>
+
+        {/* Inspector signature block */}
+        <section className="jcr-card">
+          <h3>Signature of Inspector(s)</h3>
+          <div className="jcr-field-block">
+            <label>Name</label>
+            <input
+              type="text"
+              value={inspector.name}
+              onChange={(e) => handleInspector('name', e.target.value)}
+              placeholder="Inspector name"
+            />
+          </div>
+          <div className="jcr-field-block">
+            <label>Designation</label>
+            <input
+              type="text"
+              value={inspector.designation}
+              onChange={(e) => handleInspector('designation', e.target.value)}
+              placeholder="Inspector designation"
+            />
+          </div>
+          <div className="jcr-field-block">
+            <label>Office/ Deptt</label>
+            <input
+              type="text"
+              value={inspector.office}
+              onChange={(e) => handleInspector('office', e.target.value)}
+              placeholder="Office / Department"
             />
           </div>
         </section>
