@@ -61,6 +61,20 @@ const toLines = (v) => {
 // entry on its own line.
 const multiline = (v) => toLines(v).join('\n');
 
+// Combine a work-order value with a separate work-order date. The date is
+// appended as " DATED: <date>" to each work-order line that does NOT already
+// contain a date (so typing the date inside the box still works and never
+// double-prints). Returns a newline-joined string.
+const workOrderWithDate = (workOrderNo, workOrderDate) => {
+  const date = val(workOrderDate).trim();
+  const lines = toLines(workOrderNo);
+  if (!date) return lines.join('\n');
+  const alreadyHasDate = (s) => /dated|dt\.?|\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}/i.test(s);
+  return lines
+    .map((line) => (line && !alreadyHasDate(line) ? `${line} DATED: ${date}` : line))
+    .join('\n');
+};
+
 /**
  * Stamp manually entered page-number labels, in order, centered near the
  * bottom of each page. No footer divider line is drawn. Pass the labels from
@@ -206,7 +220,7 @@ const generateFormatIII = (doc, formData, addNewPage = true) => {
     ['Name of System', val(formData.systemName) || 'Solar Street Lighting System'],
     ['Name of district', multiline(formData.district)],
     ['Rate Contract No. & date', multiline(formData.rateContractNo)],
-    ['Work order no. & date', multiline(formData.workOrderNo)],
+    ['Work order no. & date', workOrderWithDate(formData.workOrderNo, formData.workOrderDate)],
     ['Name & address of Supplier', val(formData.supplierName)],
     ['Total Work Order Quantity (nos.)', val(formData.totalWorkOrderQty)],
     ['Date of Supply of Material by the firm', formatDate(formData.materialSupplyDate)],
@@ -248,7 +262,9 @@ const generateFormatIII = (doc, formData, addNewPage = true) => {
   // Inside running prose, join multiple work orders with commas for readability.
   // The work order value already carries its own date (e.g. "... DATED: 18/02/2026"),
   // so we do NOT add another "Dated ..." after it.
-  const wo = toLines(formData.workOrderNo).filter(Boolean).join(', ') || '………………';
+  const wo = toLines(workOrderWithDate(formData.workOrderNo, formData.workOrderDate))
+    .filter(Boolean)
+    .join(', ') || '………………';
   const inspDate = formatDate(formData.preDispatchInspectionDate) || '………………';
   const certText =
     `Certified that ${nos} nos. of Solar Street Lighting Systems in reference to work order no. ` +
@@ -334,7 +350,7 @@ const generateFormatIIIa = (doc, formData) => {
   }
 
   // Work Order + Supplier. Multiple work orders each on their own line.
-  const woLines = toLines(formData.workOrderNo);
+  const woLines = toLines(workOrderWithDate(formData.workOrderNo, formData.workOrderDate));
   doc.text(`Work Order No. & date:  ${woLines[0] || ''}`, MARGIN, y);
   y += 6;
   if (woLines.length > 1) {

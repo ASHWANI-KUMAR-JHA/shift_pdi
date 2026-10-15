@@ -67,6 +67,7 @@ const JCR = ({ onBack, onLogout }) => {
     district: '',
     rateContractNo: '',
     workOrderNo: '',
+    workOrderDate: '',
     supplierName: '',
     totalWorkOrderQty: '',
     materialSupplyDate: '',
@@ -588,7 +589,8 @@ const JCR = ({ onBack, onLogout }) => {
       systemName: 'Solar Street Lighting System',
       district: `${pick(districts)} (BLOCK: ${pick(blocks)}, VILLAGE: ${pick(villages)})`,
       rateContractNo: `119/HR/RC/E-5/2025-26/${randInt(10000, 99999)} dated 29.01.2026`,
-      workOrderNo: `DNRE/2025-2026/${randInt(10000, 99999)} DATED: 18/02/2026`,
+      workOrderNo: `DNRE/2025-2026/${randInt(10000, 99999)}`,
+      workOrderDate: '18/02/2026',
       supplierName: 'M/S SUNFEED ECOSOLUTIONS INDIA PVT LTD, 527, FIFTH FLOOR, SECTOR-17, PANCHKULA, HARYANA - 134109',
       totalWorkOrderQty: String(randInt(50, 200)),
       materialSupplyDate: randDate(),
@@ -622,6 +624,7 @@ const JCR = ({ onBack, onLogout }) => {
       district: '',
       rateContractNo: '',
       workOrderNo: '',
+      workOrderDate: '',
       supplierName: '',
       totalWorkOrderQty: '',
       materialSupplyDate: '',
@@ -962,6 +965,16 @@ const JCR = ({ onBack, onLogout }) => {
                 style={{ marginTop: '8px', minHeight: '72px', resize: 'vertical' }}
                 rows={3}
                 required
+              />
+            </div>
+
+            <div className="form-field">
+              <ComboboxWithHistory
+                fieldId="jcr.workOrderDate"
+                value={formData.workOrderDate}
+                onChange={(value) => handleCommonFieldChange('workOrderDate', value)}
+                label="Work Order Date (DATED:)"
+                placeholder="e.g., 18/02/2026 — appended to work order no. in the PDF"
               />
             </div>
 
