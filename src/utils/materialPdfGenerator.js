@@ -391,6 +391,113 @@ export const exportMaterialExcel = async (formData) => {
   }
 };
 
+/**
+ * Import a material list from an Excel / CSV file and return rows shaped for
+ * formData.materialItems. SheetJS is loaded lazily.
+ *
+ * The parser is tolerant of column order and header naming. It matches each
+ * table column by looking for keywords in the header cells (case-insensitive),
+ * so files exported from this app (or similar sheets) import cleanly. Rows that
+ * are completely empty are skipped.
+ *
+ * Returns { success, items } or { success:false, error }.
+ */
+export const importMaterialExcel = async (file) => {
+  try {
+    const XLSX = await import('xlsx');
+    const data = new Uint8Array(await file.arrayBuffer());
+    const wb = XLSX.read(data, { type: 'array' });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    // Array-of-arrays so we can locate the header row ourselves.
+    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, blankrows: false, defval: '' });
+    if (!rows.length) return { success: false, error: 'The sheet is empty.' };
+
+    const norm = (s) => String(s ?? '').trim().toLowerCase();
+
+    // Find the header row: the first row containing a cell that looks like a
+    // module/battery/luminaire or S.No. column header.
+    const looksLikeHeader = (row) =>
+      row.some((c) => {
+        const t = norm(c);
+        return (
+          t.includes('module') ||
+          t.includes('battery') ||
+          t.includes('luminaire') ||
+          t === 's.no.' || t === 's.no' || t === 'sno' || t === 'sr no' || t === 'sr. no.'
+        );
+      });
+
+    let headerIdx = rows.findIndex(looksLikeHeader);
+    if (headerIdx === -1) headerIdx = 0; // fall back to the first row
+
+    const header = rows[headerIdx].map(norm);
+
+    // Resolve the column index for each target field by keyword matching.
+    const findCol = (...needles) =>
+      header.findIndex((h) => needles.every((n) => h.includes(n)));
+
+    const colSno = (() => {
+      const i = header.findIndex((h) => h === 's.no.' || h === 's.no' || h === 'sno' || h.startsWith('sr'));
+      return i;
+    })();
+    const colModuleSerial = findCol('module', 'sr');
+    const colModuleMake = (() => {
+      let i = findCol('make', 'module');
+      if (i === -1) i = findCol('module', 'make');
+      return i;
+    })();
+    const colBatterySerial = findCol('battery', 'sr');
+    const colBatteryMake = (() => {
+      let i = findCol('make', 'battery');
+      if (i === -1) i = findCol('battery', 'make');
+      return i;
+    })();
+    const colLumSerial = findCol('luminaire', 'sr');
+    const colLumMake = (() => {
+      let i = findCol('make', 'luminaire');
+      if (i === -1) i = findCol('luminaire', 'make');
+      return i;
+    })();
+
+    // If keyword matching failed entirely, fall back to fixed positions that
+    // match this app's own export layout: [S.No, Mod Sr, Mod Make, Bat Sr,
+    // Bat Make, Lum Sr, Lum Make].
+    const pick = (row, idx, fallbackIdx) => {
+      const i = idx !== -1 ? idx : fallbackIdx;
+      return i >= 0 && i < row.length ? val(row[i]).trim() : '';
+    };
+
+    const dataRows = rows.slice(headerIdx + 1);
+    const items = [];
+    dataRows.forEach((row, i) => {
+      const item = {
+        sno: pick(row, colSno, 0) || String(items.length + 1),
+        moduleSerial: pick(row, colModuleSerial, 1),
+        moduleMake: pick(row, colModuleMake, 2),
+        batterySerial: pick(row, colBatterySerial, 3),
+        batteryMake: pick(row, colBatteryMake, 4),
+        luminaireSerial: pick(row, colLumSerial, 5),
+        luminaireMake: pick(row, colLumMake, 6),
+      };
+      // Skip rows with no actual material data.
+      const hasData = [item.moduleSerial, item.moduleMake, item.batterySerial, item.batteryMake, item.luminaireSerial, item.luminaireMake]
+        .some((v) => v !== '');
+      if (hasData) {
+        item.sno = String(items.length + 1);
+        items.push(item);
+      }
+    });
+
+    if (!items.length) {
+      return { success: false, error: 'No material rows found in the file. Check the column headers.' };
+    }
+    return { success: true, items };
+  } catch (error) {
+    console.error('Failed to import Material Excel:', error);
+    return { success: false, error: error.message };
+  }
+};
+
 /** Generate a blob URL for previewing the Material Report PDF in an iframe. */
 export const generateMaterialPreview = async (formData) => {
   try {

@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import ComboboxWithHistory from './ComboboxWithHistory';
 import { saveJCRDraft, loadJCRDraft, getAllJCRDrafts, deleteJCRDraft } from '../utils/jcrStorage';
-import { generateMaterialPDF, generateMaterialPreview, exportMaterialExcel } from '../utils/materialPdfGenerator';
+import { generateMaterialPDF, generateMaterialPreview, exportMaterialExcel, importMaterialExcel } from '../utils/materialPdfGenerator';
 import './MaterialReport.css';
 
 const DRAFT_PREFIX = 'material_';
@@ -50,6 +50,7 @@ const MaterialReport = ({ onBack, onLogout }) => {
   const [showPreview, setShowPreview] = useState(false);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [message, setMessage] = useState(null);
+  const importFileRef = useRef(null);
 
   // Load saved drafts (filtered to material drafts) on mount
   useEffect(() => {
@@ -293,6 +294,34 @@ const MaterialReport = ({ onBack, onLogout }) => {
       }
     } catch (err) {
       alert(`Failed to export Excel: ${err.message}`);
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  // Import the material list table from an Excel / CSV file. Fills
+  // formData.materialItems with the parsed rows.
+  const handleImportExcel = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // allow re-selecting the same file
+    if (!file) return;
+    setGenerating(true);
+    try {
+      const result = await importMaterialExcel(file);
+      if (result.success) {
+        setFormData((prev) => ({
+          ...prev,
+          materialItems: result.items,
+          // Keep the systems count in sync with the imported rows.
+          materialReceiptSystems: prev.materialReceiptSystems || String(result.items.length),
+        }));
+        setUnsavedChanges(true);
+        setMessage({ type: 'success', text: `Imported ${result.items.length} material row(s) from Excel.` });
+      } else {
+        alert(`Could not import file: ${result.error}`);
+      }
+    } catch (err) {
+      alert(`Could not import file: ${err.message}`);
     } finally {
       setGenerating(false);
     }
@@ -558,9 +587,27 @@ const MaterialReport = ({ onBack, onLogout }) => {
               </tbody>
             </table>
           </div>
-          <button type="button" className="btn btn-secondary add-row-btn" onClick={addItemRow}>
-            <span className="btn-icon">+</span> Add Row
-          </button>
+          <div className="material-table-actions">
+            <button type="button" className="btn btn-secondary add-row-btn" onClick={addItemRow}>
+              <span className="btn-icon">+</span> Add Row
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => importFileRef.current?.click()}
+              disabled={generating}
+              title="Import the material list from an Excel (.xlsx/.xls) or CSV file"
+            >
+              <span className="btn-icon">📥</span> Import Excel
+            </button>
+            <input
+              ref={importFileRef}
+              type="file"
+              accept=".xlsx,.xls,.csv,.tsv,.txt"
+              style={{ display: 'none' }}
+              onChange={handleImportExcel}
+            />
+          </div>
         </section>
 
         {/* Section 3: Signatures */}
