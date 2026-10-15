@@ -1036,6 +1036,16 @@ const JCR = ({ onBack, onLogout }) => {
                 type="date"
               />
             </div>
+
+            <div className="form-field">
+              <ComboboxWithHistory
+                fieldId="jcr.preDispatchInspectionDate"
+                value={formData.preDispatchInspectionDate}
+                onChange={(value) => handleCommonFieldChange('preDispatchInspectionDate', value)}
+                label="Date of Pre-Dispatch Inspection"
+                type="date"
+              />
+            </div>
           </div>
         </section>
 

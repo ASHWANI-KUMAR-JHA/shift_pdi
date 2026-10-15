@@ -246,11 +246,13 @@ const generateFormatIII = (doc, formData, addNewPage = true) => {
   // Certification paragraph inside a full-width bordered box (continuation of the form table).
   const nos = val(formData.systemsInThisJCR) || '…………';
   // Inside running prose, join multiple work orders with commas for readability.
+  // The work order value already carries its own date (e.g. "... DATED: 18/02/2026"),
+  // so we do NOT add another "Dated ..." after it.
   const wo = toLines(formData.workOrderNo).filter(Boolean).join(', ') || '………………';
   const inspDate = formatDate(formData.preDispatchInspectionDate) || '………………';
   const certText =
     `Certified that ${nos} nos. of Solar Street Lighting Systems in reference to work order no. ` +
-    `${wo} Dated…………… and further pre-dispatch inspection carried out on ${inspDate} have been ` +
+    `${wo} and further pre-dispatch inspection carried out on ${inspDate} have been ` +
     `installed and commissioned at the place (s) mentioned in the enclosed list & these systems have ` +
     `been taken over by beneficiary/s in good working condition.`;
 
