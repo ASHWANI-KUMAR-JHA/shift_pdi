@@ -1250,12 +1250,16 @@ function PDI({ onBack, onLogout }) {
         });
     };
 
-    // NOTE: The attached serial-number list pages (SPV / Battery / Luminaire)
-    // are intentionally NOT rendered into the PDF. The uploaded lists are still
-    // used for duplicate checking in the UI, but the report itself only contains
-    // the main format pages.
-    void drawIdListPages;
-    void drawCustomBulkFor;
+    // ===== ATTACHED SERIAL-NUMBER LIST PAGES =====
+    // Each component's attached list is printed after the 2 main format pages,
+    // followed by its custom bulk lists. uniqueIds() ensures only unique serial
+    // numbers reach the PDF.
+    drawIdListPages(listTitles.spv || 'SPV MODULE SERIAL NUMBERS (ATTACHED LIST)', uniqueIds(spvList));
+    drawCustomBulkFor('spv');
+    drawIdListPages(listTitles.battery || 'BATTERY SERIAL NUMBERS (ATTACHED LIST)', uniqueIds(batteryList));
+    drawCustomBulkFor('battery');
+    drawIdListPages(listTitles.luminaire || 'LUMINAIRE SERIAL NUMBERS (ATTACHED LIST)', uniqueIds(luminaireList));
+    drawCustomBulkFor('luminaire');
 
     // ===== ADDITIONAL FREE-FORM PAGES =====
     // Each extra page the user added via the "+" button is appended here as its
