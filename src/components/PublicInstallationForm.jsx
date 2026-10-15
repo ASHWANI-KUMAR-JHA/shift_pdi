@@ -1282,28 +1282,6 @@ function SiteImageField({ file, form, latitude, longitude, onSelect, onClear, on
         </div>
       )}
 
-      {/* Debug panel: shows exactly what the location + reverse-geocode returned */}
-      {(coords || geo) && (
-        <details className="pf-geo-debug" open>
-          <summary>Location data returned (for debugging)</summary>
-          <dl className="pf-geo-debug-list">
-            <div><dt>Latitude</dt><dd>{coords ? formatCoord(coords.lat) : '—'}</dd></div>
-            <div><dt>Longitude</dt><dd>{coords ? formatCoord(coords.lng) : '—'}</dd></div>
-            <div><dt>Resolved village</dt><dd>{geo?.village || '—'}</dd></div>
-            <div><dt>Resolved block</dt><dd>{geo?.block || '—'}</dd></div>
-            <div><dt>Resolved assembly</dt><dd>{geo?.assembly || '—'}</dd></div>
-            <div><dt>Resolved state</dt><dd>{geo?.state || '—'}</dd></div>
-            <div className="pf-geo-debug-full"><dt>Full address</dt><dd>{geo?.display || '—'}</dd></div>
-          </dl>
-          {geo?.raw && (
-            <>
-              <span className="pf-help">Raw Nominatim response:</span>
-              <pre className="pf-geo-debug-raw">{JSON.stringify(geo.raw, null, 2)}</pre>
-            </>
-          )}
-        </details>
-      )}
-
       {file && previewUrl && (
         <div className="pf-capture-preview">
           <img src={previewUrl} alt={file.name} />
