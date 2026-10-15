@@ -858,7 +858,8 @@ function PDI({ onBack, onLogout }) {
         doc.setFontSize(9);
         doc.setFont('times', 'normal');
         doc.setTextColor(0, 0, 0);
-        doc.text(label, pageWidth / 2, footerY, { align: 'center' });
+        // Stamp the manual page number at the bottom-right corner.
+        doc.text(label, pageWidth - margin, footerY, { align: 'right' });
       }
     };
 
@@ -866,25 +867,25 @@ function PDI({ onBack, onLogout }) {
       if (pageNo > 0) doc.addPage();
       pageNo += 1;
       let y = margin;
-      // FORMAT-I top right
-      doc.setFontSize(8);
-      doc.setFont('times', 'normal');
+      // "Format-I" top right — bold + underlined, exactly as the screenshot.
+      doc.setFontSize(10);
+      doc.setFont('times', 'bold');
       doc.setTextColor(0, 0, 0);
-      doc.text('FORMAT-I', pageWidth - margin, y, { align: 'right' });
+      const fmtLabel = 'Format-I';
+      doc.text(fmtLabel, pageWidth - margin, y, { align: 'right' });
+      // underline for the "Format-I" label
+      const fmtW = doc.getTextWidth(fmtLabel);
+      doc.setLineWidth(0.3);
+      doc.setDrawColor(0, 0, 0);
+      doc.line(pageWidth - margin - fmtW, y + 1, pageWidth - margin, y + 1);
       y += 5;
       if (withTitle) {
-        doc.setFontSize(10);
+        // Centered title
+        doc.setFontSize(10.5);
         doc.setFont('times', 'bold');
         const headingLines = doc.splitTextToSize(reportHeading || DEFAULT_HEADING, contentWidth);
         doc.text(headingLines, pageWidth / 2, y + 2, { align: 'center' });
         y += headingLines.length * 4.5 + 2;
-        // if (projectName) {
-        //   doc.setFontSize(9);
-        //   doc.setFont('times', 'bolditalic');
-        //   const projLines = doc.splitTextToSize(`Project: ${projectName}`, contentWidth);
-        //   doc.text(projLines, pageWidth / 2, y + 2, { align: 'center' });
-        //   y += projLines.length * 4 + 2;
-        // }
       }
       return y + 2;
     };
@@ -898,32 +899,41 @@ function PDI({ onBack, onLogout }) {
       return y;
     };
 
-    // Draw a label/value row (2-col bordered). Returns new y.
-    const labelColW = contentWidth * 0.05; // number col
-    const midColW = contentWidth * 0.5;
-    const valColW = contentWidth - labelColW - midColW;
+    // Draw a plain colon-separated info line (NO borders) — a true mirror of the
+    // paper form. Layout:  [No.]  [Label ..................]  :  [Value]
+    //   - number column on the far left
+    //   - label column (wraps across multiple lines if long)
+    //   - a fixed colon separator
+    //   - value column on the right
+    const noColX = margin;                       // where the "1." number prints
+    const labelColX = margin + 7;                // where the label text starts
+    const labelColW = contentWidth * 0.52;       // label wrap width
+    const colonX = labelColX + labelColW + 1;    // the ":" separator x
+    const valColX = colonX + 3;                  // value text start
+    const valColW = pageWidth - margin - valColX; // value wrap width
 
     const drawInfoRow = (y, no, label, value) => {
-      doc.setFontSize(7.5);
-      const labelLines = doc.splitTextToSize(label, midColW - 3);
-      const valueLines = doc.splitTextToSize(value || '', valColW - 3);
-      const linesN = Math.max(labelLines.length, valueLines.length, 1);
-      const rowH = Math.max(6, linesN * lineGap + rowPad);
-      y = ensureSpace(y, rowH);
-      const x = margin;
-      // borders
-      doc.setDrawColor(120, 120, 120);
-      doc.setLineWidth(0.2);
-      doc.rect(x, y, labelColW, rowH);
-      doc.rect(x + labelColW, y, midColW, rowH);
-      doc.rect(x + labelColW + midColW, y, valColW, rowH);
-      // text
+      doc.setFontSize(9);
       doc.setTextColor(0, 0, 0);
-      doc.setFont('times', 'bold');
-      doc.text(no, x + labelColW / 2, y + 4, { align: 'center' });
-      doc.text(labelLines, x + labelColW + 1.5, y + 4);
+      const labelLines = doc.splitTextToSize(label, labelColW);
+      const valueLines = doc.splitTextToSize(value || '', valColW);
+      const linesN = Math.max(labelLines.length, valueLines.length, 1);
+      const rowH = Math.max(5, linesN * lineGap + rowPad);
+      y = ensureSpace(y, rowH);
+
+      // number (e.g. "1." or "2 (i)") — plain, left aligned. A trailing "." is
+      // added only for a pure integer so sub-items like "2 (i)" stay clean.
       doc.setFont('times', 'normal');
-      doc.text(valueLines, x + labelColW + midColW + 1.5, y + 4);
+      if (no) {
+        const noText = /^\d+$/.test(String(no).trim()) ? `${no}.` : String(no);
+        doc.text(noText, noColX, y + 3.5);
+      }
+      // label text
+      doc.text(labelLines, labelColX, y + 3.5);
+      // colon separator aligned on the first line
+      doc.text(':', colonX, y + 3.5);
+      // value text
+      doc.text(valueLines, valColX, y + 3.5);
       return y + rowH;
     };
 
@@ -1240,14 +1250,12 @@ function PDI({ onBack, onLogout }) {
         });
     };
 
-    // Each component's attached list followed by its custom bulk lists.
-    // uniqueIds() ensures only unique serial numbers reach the PDF.
-    drawIdListPages(listTitles.spv || 'SPV MODULE SERIAL NUMBERS (ATTACHED LIST)', uniqueIds(spvList));
-    drawCustomBulkFor('spv');
-    drawIdListPages(listTitles.battery || 'BATTERY SERIAL NUMBERS (ATTACHED LIST)', uniqueIds(batteryList));
-    drawCustomBulkFor('battery');
-    drawIdListPages(listTitles.luminaire || 'LUMINAIRE SERIAL NUMBERS (ATTACHED LIST)', uniqueIds(luminaireList));
-    drawCustomBulkFor('luminaire');
+    // NOTE: The attached serial-number list pages (SPV / Battery / Luminaire)
+    // are intentionally NOT rendered into the PDF. The uploaded lists are still
+    // used for duplicate checking in the UI, but the report itself only contains
+    // the main format pages.
+    void drawIdListPages;
+    void drawCustomBulkFor;
 
     // ===== ADDITIONAL FREE-FORM PAGES =====
     // Each extra page the user added via the "+" button is appended here as its

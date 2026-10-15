@@ -80,7 +80,8 @@ const stampPageNumbers = (doc, pageNumbers = []) => {
     doc.setFont(FONT, 'normal');
     doc.setFontSize(9);
     doc.setTextColor(INK[0], INK[1], INK[2]);
-    doc.text(label, PAGE_W / 2, footerY, { align: 'center' });
+    // Stamp the manual page number at the bottom-right corner (matches PDI).
+    doc.text(label, PAGE_W - MARGIN, footerY, { align: 'right' });
   }
 };
 
@@ -210,10 +211,11 @@ const generateFormatIII = (doc, formData, addNewPage = true) => {
     ['Total Work Order Quantity (nos.)', val(formData.totalWorkOrderQty)],
     ['Date of Supply of Material by the firm', formatDate(formData.materialSupplyDate)],
     ['No. of systems covered under this JCR (Nos.)', val(formData.systemsInThisJCR)],
+    ['Invoice No. & date vide which the systems covered under this JCR were supplied', multiline(formData.invoiceNo)],
     ['Date of complete installation and commissioning of the system (s) by the firm', formatDate(formData.installationCompleteDate)],
     ['Date of Handing over the system(s) to the beneficiary', formatDate(formData.handoverDate)],
     [
-      'Site-wise list of installations\n(Name, Address, date of supply of system to the beneficiary, date of installation and commissioning of system at the site)',
+      'Site-wise list of installations\n(Name, Address, date of supply of system to the beneficiary, date of installation and commissioning of system at the site,\n\n(Separate list with compete details enclosed) {(Format- III(a)} along with photographs',
       '',
     ],
   ];
@@ -280,19 +282,23 @@ const generateFormatIII = (doc, formData, addNewPage = true) => {
   const c2 = MARGIN + third;
   const c3 = MARGIN + third * 2;
 
+  // Heading line of the three blocks.
   doc.text('Signature of Supplier', c1, y);
   doc.text('Signature of user', c2, y);
   doc.text('Signature of PO/APO', c3, y);
   y += 6;
-  doc.text('Name:', c1, y);
+  // Supplier: "With seal" then "Name:" ; User: "Name:" ; PO/APO: "With seal"
+  doc.text('With seal', c1, y);
   doc.text('Name:', c2, y);
-  doc.text('Name:', c3, y);
+  doc.text('With seal', c3, y);
+  y += 6;
+  doc.text('Name:', c1, y);
 
   y += 18;
   doc.text('Countersigned by', c2, y);
   y += 14;
   const authority = val(formData.countersignAuthority) ||
-    'Addl. Deputy Commissioner –cum-\nChief Project Officer … (district)';
+    'Addl. Deputy Commissioner –cum-\nChief Project Officer ... (district)';
   doc.text(authority.split('\n'), c2, y);
 };
 
@@ -487,15 +493,20 @@ const generateFormatIIIa = (doc, formData) => {
   const c3 = MARGIN + third * 2;
 
   doc.setFontSize(11);
+  // Heading line of the three blocks.
   doc.text('Signature of Supplier', c1, y2);
   doc.text('Signature of beneficiary /', c2, y2);
   doc.text('Signature of PO/APO', c3, y2);
   y2 += 6;
-  doc.text('Name:', c1, y2);
+  // Second line: Supplier "With seal" | beneficiary "Sarpanch" | PO/APO "With seal"
+  doc.text('With seal', c1, y2);
   doc.text('Sarpanch', c2, y2);
-  doc.text('Name:', c3, y2);
+  doc.text('With seal', c3, y2);
   y2 += 6;
+  // Third line: all three "Name:"
+  doc.text('Name:', c1, y2);
   doc.text('Name:', c2, y2);
+  doc.text('Name:', c3, y2);
 };
 
 /* -------------------------------------------------------------------------- */

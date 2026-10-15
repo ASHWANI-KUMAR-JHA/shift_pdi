@@ -71,6 +71,7 @@ const JCR = ({ onBack, onLogout }) => {
     totalWorkOrderQty: '',
     materialSupplyDate: '',
     systemsInThisJCR: '',
+    invoiceNo: '',
     installationCompleteDate: '',
     handoverDate: '',
     
@@ -92,6 +93,10 @@ const JCR = ({ onBack, onLogout }) => {
     userSignatoryName: '',
     poApoName: '',
     countersignAuthority: 'Addl. Deputy Commissioner-cum-Chief Project Officer, PANCHKULA',
+
+    // Manual page numbers stamped (bottom-right) onto the generated PDF pages,
+    // in order. Each: { id, label }. Added via the "+" button in the UI.
+    pageNumbers: [],
 
     // Variable fields (repeatable rows)
     installations: [],
@@ -267,6 +272,34 @@ const JCR = ({ onBack, onLogout }) => {
 
   const handleCommonFieldChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  // ===== Manual page-number handlers (mirror of the PDI feature) =====
+  // "+" appends a new label pre-filled with the next sequential number. Each
+  // label is stamped (bottom-right) onto the matching page of the PDF.
+  const addPageNumber = () => {
+    setFormData(prev => {
+      const list = prev.pageNumbers || [];
+      return {
+        ...prev,
+        pageNumbers: [
+          ...list,
+          { id: list.length ? Math.max(...list.map(p => p.id)) + 1 : 1, label: String(list.length + 1) },
+        ],
+      };
+    });
+  };
+  const removePageNumber = (id) => {
+    setFormData(prev => ({
+      ...prev,
+      pageNumbers: (prev.pageNumbers || []).filter(p => p.id !== id),
+    }));
+  };
+  const updatePageNumber = (id, label) => {
+    setFormData(prev => ({
+      ...prev,
+      pageNumbers: (prev.pageNumbers || []).map(p => (p.id === id ? { ...p, label } : p)),
+    }));
   };
 
   // The Work Order No. field supports BOTH checkbox multi-select and free text.
@@ -560,6 +593,7 @@ const JCR = ({ onBack, onLogout }) => {
       totalWorkOrderQty: String(randInt(50, 200)),
       materialSupplyDate: randDate(),
       systemsInThisJCR: String(count),
+      invoiceNo: `INV/${randInt(1000, 9999)} dated ${randDate()}`,
       installationCompleteDate: randDate(),
       handoverDate: randDate(),
       moduleMake: pick(['SENZA (SUN AND SAND EXIM)', 'JAKSON', 'WAAREE']),
@@ -592,6 +626,7 @@ const JCR = ({ onBack, onLogout }) => {
       totalWorkOrderQty: '',
       materialSupplyDate: '',
       systemsInThisJCR: '',
+      invoiceNo: '',
       installationCompleteDate: '',
       handoverDate: '',
       moduleMake: '',
@@ -607,6 +642,7 @@ const JCR = ({ onBack, onLogout }) => {
       userSignatoryName: '',
       poApoName: '',
       countersignAuthority: 'Addl. Deputy Commissioner-cum-Chief Project Officer, PANCHKULA',
+      pageNumbers: [],
       installations: [],
     });
     setCurrentDraft(null);
@@ -958,6 +994,16 @@ const JCR = ({ onBack, onLogout }) => {
                 label="No. of Systems in this JCR (nos.)"
                 type="number"
                 required
+              />
+            </div>
+
+            <div className="form-field">
+              <ComboboxWithHistory
+                fieldId="jcr.invoiceNo"
+                value={formData.invoiceNo}
+                onChange={(value) => handleCommonFieldChange('invoiceNo', value)}
+                label="Invoice No. & date (vide which systems were supplied)"
+                type="text"
               />
             </div>
 
@@ -1326,6 +1372,47 @@ const JCR = ({ onBack, onLogout }) => {
               installationCompleteDate: formData.installationCompleteDate,
             }}
           />
+        </section>
+
+        {/* Manual page numbers — stamped bottom-right on each PDF page */}
+        <section className="jcr-section">
+          <h2 className="jcr-section-title">Page Numbers (Manual)</h2>
+          <p className="jcr-hint">
+            Add a label for each page in the order the pages appear in the PDF. Use
+            the <strong>+ Add Page Number</strong> button, then type each label
+            (e.g. 1, 2, 3). Each label is printed at the bottom-right of its page.
+            Leave empty to print no page numbers.
+          </p>
+
+          {(formData.pageNumbers || []).length > 0 && (
+            <div className="jcr-pagenum-grid">
+              {(formData.pageNumbers || []).map((p, idx) => (
+                <div className="jcr-pagenum-item" key={p.id}>
+                  <span className="jcr-pagenum-pos">Page {idx + 1}</span>
+                  <input
+                    type="text"
+                    value={p.label}
+                    onChange={(e) => updatePageNumber(p.id, e.target.value)}
+                    placeholder="Label (e.g. 1)"
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => removePageNumber(p.id)}
+                    title="Remove this page number"
+                  >
+                    🗑️
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="jcr-pagenum-actions">
+            <button type="button" className="btn btn-secondary" onClick={addPageNumber}>
+              <span className="btn-icon">+</span> Add Page Number
+            </button>
+          </div>
         </section>
 
       </form>
