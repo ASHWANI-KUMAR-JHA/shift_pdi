@@ -32,6 +32,10 @@ const initialFormData = () => ({
   supplierSignatoryName: '',
   poApoName: '',
 
+  // Manual page numbers stamped (bottom-right) onto the generated PDF pages,
+  // in order. Each: { id, label }. Added via the "+" button in the UI.
+  pageNumbers: [],
+
   // Format-II(a) material list rows
   materialItems: [emptyItem()],
 });
@@ -62,6 +66,37 @@ const MaterialReport = ({ onBack, onLogout }) => {
 
   const handleFieldChange = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
+    setUnsavedChanges(true);
+  };
+
+  // ===== Manual page-number handlers (mirror of the PDI/JCR feature) =====
+  // "+" appends a new label pre-filled with the next sequential number. Each
+  // label is stamped (bottom-right) onto the matching page of the PDF.
+  const addPageNumber = () => {
+    setFormData((prev) => {
+      const list = prev.pageNumbers || [];
+      return {
+        ...prev,
+        pageNumbers: [
+          ...list,
+          { id: list.length ? Math.max(...list.map((p) => p.id)) + 1 : 1, label: String(list.length + 1) },
+        ],
+      };
+    });
+    setUnsavedChanges(true);
+  };
+  const removePageNumber = (id) => {
+    setFormData((prev) => ({
+      ...prev,
+      pageNumbers: (prev.pageNumbers || []).filter((p) => p.id !== id),
+    }));
+    setUnsavedChanges(true);
+  };
+  const updatePageNumber = (id, label) => {
+    setFormData((prev) => ({
+      ...prev,
+      pageNumbers: (prev.pageNumbers || []).map((p) => (p.id === id ? { ...p, label } : p)),
+    }));
     setUnsavedChanges(true);
   };
 
@@ -535,6 +570,48 @@ const MaterialReport = ({ onBack, onLogout }) => {
               />
             </div>
           </div>
+        </section>
+
+        {/* Section 4: Manual page numbers (bottom-right on each PDF page) */}
+        <section className="form-section">
+          <h2 className="section-title">
+            <span className="section-number">4</span>
+            Page Numbers (Manual)
+          </h2>
+          <p className="material-pagenum-hint">
+            Add a label for each page in the order the pages appear in the PDF.
+            Use the <strong>+ Add Page Number</strong> button, then type each
+            label (e.g. 1, 2, 3). Each label is printed at the bottom-right of
+            its page. Leave empty to print no page numbers.
+          </p>
+
+          {(formData.pageNumbers || []).length > 0 && (
+            <div className="material-pagenum-grid">
+              {(formData.pageNumbers || []).map((p, idx) => (
+                <div className="material-pagenum-item" key={p.id}>
+                  <span className="material-pagenum-pos">Page {idx + 1}</span>
+                  <input
+                    type="text"
+                    value={p.label}
+                    onChange={(e) => updatePageNumber(p.id, e.target.value)}
+                    placeholder="Label (e.g. 1)"
+                  />
+                  <button
+                    type="button"
+                    className="row-remove"
+                    onClick={() => removePageNumber(p.id)}
+                    title="Remove this page number"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <button type="button" className="btn btn-secondary add-row-btn" onClick={addPageNumber}>
+            <span className="btn-icon">+</span> Add Page Number
+          </button>
         </section>
       </form>
     </div>

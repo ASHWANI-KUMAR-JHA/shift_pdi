@@ -71,7 +71,8 @@ const stampPageNumbers = (doc, pageNumbers = []) => {
     doc.setFont(FONT, 'normal');
     doc.setFontSize(9);
     doc.setTextColor(INK[0], INK[1], INK[2]);
-    doc.text(label, PAGE_W / 2, footerY, { align: 'center' });
+    // Stamp the manual page number at the bottom-right corner (matches PDI/JCR).
+    doc.text(label, PAGE_W - MARGIN, footerY, { align: 'right' });
   }
 };
 

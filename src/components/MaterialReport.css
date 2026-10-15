@@ -97,3 +97,45 @@
 .add-row-btn {
   margin-top: 12px;
 }
+
+/* ===== Manual page-number section ===== */
+.material-pagenum-hint {
+  font-size: 13px;
+  color: #555;
+  margin: 4px 0 12px;
+  line-height: 1.5;
+}
+
+.material-pagenum-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.material-pagenum-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #f7f7f9;
+  border: 1px solid #e2e2e8;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.material-pagenum-pos {
+  font-size: 12px;
+  font-weight: 600;
+  color: #444;
+  white-space: nowrap;
+  min-width: 54px;
+}
+
+.material-pagenum-item input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 14px;
+}
