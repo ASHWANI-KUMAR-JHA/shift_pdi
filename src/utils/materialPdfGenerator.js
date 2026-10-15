@@ -311,6 +311,86 @@ export const generateMaterialPDF = async (formData) => {
   }
 };
 
+/**
+ * Export the Format-II(a) material list to a real Excel (.xlsx) workbook.
+ *
+ * The sheet reproduces the printed table exactly: a few header-info rows at the
+ * top (district / work order / etc.), a blank spacer row, then the tabular data
+ * with the same 7 columns as the Format-II(a) table. SheetJS is imported lazily
+ * so it stays out of the initial bundle.
+ */
+export const exportMaterialExcel = async (formData) => {
+  try {
+    const XLSX = await import('xlsx');
+
+    // ----- Table column headers (identical to the Format-II(a) print) -----
+    const TABLE_HEADERS = [
+      'S.No.',
+      'Module Sr. Number',
+      'Make of Module',
+      'Battery Sr. No.',
+      'Make of Battery',
+      'Luminaire Sr. No.',
+      'Make of Luminaire',
+    ];
+
+    const items = formData.materialItems || [];
+    const dataRows = items.map((it, idx) => [
+      val(it.sno) || String(idx + 1),
+      val(it.moduleSerial),
+      val(it.moduleMake),
+      val(it.batterySerial),
+      val(it.batteryMake),
+      val(it.luminaireSerial),
+      val(it.luminaireMake),
+    ]);
+
+    // ----- Header info block above the table (label : value) -----
+    const info = [
+      ['Name of the district', val(formData.district)],
+      ['Work Order (WO) No., date & No. of Systems ordered under W.O.', val(formData.workOrderNo)],
+      ['Material receipt for No. of Systems', val(formData.materialReceiptSystems)],
+      ['Date of pre-dispatch inspection of material', formatDate(formData.preDispatchInspectionDate)],
+    ];
+
+    // Build the full sheet as an array-of-arrays.
+    const aoa = [
+      ['LIST OF MATERIAL SUPPLIED OF SOLAR STREET LIGHTING SYSTEM'],
+      [],
+      ...info,
+      [],
+      TABLE_HEADERS,
+      ...dataRows,
+    ];
+
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+    // Column widths for readability.
+    ws['!cols'] = [
+      { wch: 8 },   // S.No.
+      { wch: 22 },  // Module Sr. Number
+      { wch: 20 },  // Make of Module
+      { wch: 18 },  // Battery Sr. No.
+      { wch: 18 },  // Make of Battery
+      { wch: 20 },  // Luminaire Sr. No.
+      { wch: 20 },  // Make of Luminaire
+    ];
+
+    // Merge the title across all 7 columns.
+    ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: TABLE_HEADERS.length - 1 } }];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Material List');
+
+    const fileName = `Material_List_${new Date().toISOString().split('T')[0]}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+    return { success: true, fileName };
+  } catch (error) {
+    console.error('Failed to export Material Excel:', error);
+    return { success: false, error: error.message };
+  }
+};
+
 /** Generate a blob URL for previewing the Material Report PDF in an iframe. */
 export const generateMaterialPreview = async (formData) => {
   try {

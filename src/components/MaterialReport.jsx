@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import ComboboxWithHistory from './ComboboxWithHistory';
 import { saveJCRDraft, loadJCRDraft, getAllJCRDrafts, deleteJCRDraft } from '../utils/jcrStorage';
-import { generateMaterialPDF, generateMaterialPreview } from '../utils/materialPdfGenerator';
+import { generateMaterialPDF, generateMaterialPreview, exportMaterialExcel } from '../utils/materialPdfGenerator';
 import './MaterialReport.css';
 
 const DRAFT_PREFIX = 'material_';
@@ -281,6 +281,23 @@ const MaterialReport = ({ onBack, onLogout }) => {
     }
   };
 
+  // Export the Format-II(a) material list as a real Excel (.xlsx) file.
+  const handleExportExcel = async () => {
+    setGenerating(true);
+    try {
+      const result = await exportMaterialExcel(formData);
+      if (result.success) {
+        setMessage({ type: 'success', text: `Excel exported: ${result.fileName}` });
+      } else {
+        alert(`Failed to export Excel: ${result.error}`);
+      }
+    } catch (err) {
+      alert(`Failed to export Excel: ${err.message}`);
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   return (
     <div className="jcr-container">
       <div className="jcr-nav">
@@ -336,6 +353,9 @@ const MaterialReport = ({ onBack, onLogout }) => {
           </button>
           <button className="btn btn-success" onClick={handleGeneratePDF} disabled={generating} title="Generate PDF document">
             <span className="btn-icon">📄</span> {generating ? 'Working...' : 'Generate PDF'}
+          </button>
+          <button className="btn btn-secondary" onClick={handleExportExcel} disabled={generating} title="Export the material list table to an Excel (.xlsx) file">
+            <span className="btn-icon">📊</span> {generating ? 'Working...' : 'Export Excel'}
           </button>
         </div>
       </div>
