@@ -34,7 +34,7 @@ export async function getUserStatusByEmail(email) {
   };
 }
 
-// Look up a single active user by email (used at login).
+// Look up a single user by email (used at login).
 export async function findUserByEmail(email) {
   const { data, error } = await supabase
     .from(USERS_TABLE)
@@ -43,6 +43,47 @@ export async function findUserByEmail(email) {
     .limit(1);
   if (error) throw error;
   return data?.[0] || null;
+}
+
+// Normalise a phone number to just its digits so lookups are tolerant of
+// spaces, dashes, "+" and country-code formatting differences.
+export function normalisePhone(phone) {
+  return String(phone || '').replace(/\D/g, '');
+}
+
+// Look up a single user by phone number (used at login). Matches on the
+// trailing digits so stored "+91 98765 43210" matches typed "9876543210".
+export async function findUserByPhone(phone) {
+  const digits = normalisePhone(phone);
+  if (!digits) return null;
+  // Pull candidates that contain the typed digits, then match precisely by
+  // comparing normalised digit strings (ignores formatting / country code).
+  const { data, error } = await supabase
+    .from(USERS_TABLE)
+    .select('*')
+    .not('phone', 'is', null);
+  if (error) throw error;
+  const last10 = digits.slice(-10);
+  return (
+    (data || []).find((u) => {
+      const stored = normalisePhone(u.phone);
+      if (!stored) return false;
+      return stored === digits || stored.slice(-10) === last10;
+    }) || null
+  );
+}
+
+// Look up a user by either email or phone number depending on the input.
+export async function findUserByEmailOrPhone(identifier) {
+  const value = String(identifier || '').trim();
+  if (!value) return null;
+  // Treat anything that looks like digits (optionally with +, spaces, dashes)
+  // and contains no "@" as a phone number.
+  const looksLikePhone = !value.includes('@') && /[0-9]/.test(value) && !/[a-zA-Z]/.test(value);
+  if (looksLikePhone) {
+    return findUserByPhone(value);
+  }
+  return findUserByEmail(value);
 }
 
 // Create a new user. `password` is hashed before it leaves the browser.

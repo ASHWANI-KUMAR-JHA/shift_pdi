@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { ArrowLeft, LogOut, Plus, Trash2, Download, FileText, Save, Upload, AlertTriangle, CheckCircle2, Send, RefreshCw } from 'lucide-react';
 import jsPDF from 'jspdf';
 import Logo from './Logo';
-import { readSheetRows, extractIdList } from '../utils/spreadsheet';
+import { readSheetRows, extractIdList, downloadTableTemplate, parseTableRows } from '../utils/spreadsheet';
 import { findOrCreateWorkOrder, insertWorkOrderItems } from '../utils/workorders';
 import './PDI.css';
 
@@ -302,6 +302,72 @@ function BulkUploadBox({ title, list, onUpload, onPaste, onClear, onChange, onTi
   );
 }
 
+// Toolbar shown above each sample table (SPV / Battery / Luminaire) offering a
+// "Template" download and an Excel "Bulk Upload" that repopulates the table.
+function SampleBulkToolbar({ which, onTemplate, onUpload }) {
+  const inputRef = useRef(null);
+  return (
+    <div className="pdi-sample-tools">
+      <button
+        type="button"
+        className="btn-add-sm"
+        onClick={() => onTemplate(which)}
+        title="Download an Excel template with these columns"
+      >
+        <Download size={14} /> Template
+      </button>
+      <button
+        type="button"
+        className="btn-add-sm"
+        onClick={() => inputRef.current?.click()}
+        title="Upload a filled Excel template to populate this table"
+      >
+        <Upload size={14} /> Bulk Upload
+      </button>
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".csv,.txt,.tsv,.xlsx,.xls"
+        style={{ display: 'none' }}
+        onChange={(e) => onUpload(e, which)}
+      />
+    </div>
+  );
+}
+
+// Same as SampleBulkToolbar but for a user-added custom section — the template
+// columns and parsing follow the section's selected category (type).
+function CustomSectionBulkToolbar({ section, onTemplate, onUpload }) {
+  const inputRef = useRef(null);
+  return (
+    <div className="pdi-sample-tools">
+      <button
+        type="button"
+        className="btn-add-sm"
+        onClick={() => onTemplate(section)}
+        title="Download an Excel template for this section's type"
+      >
+        <Download size={14} /> Template
+      </button>
+      <button
+        type="button"
+        className="btn-add-sm"
+        onClick={() => inputRef.current?.click()}
+        title="Upload a filled Excel template to populate this section"
+      >
+        <Upload size={14} /> Bulk Upload
+      </button>
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".csv,.txt,.tsv,.xlsx,.xls"
+        style={{ display: 'none' }}
+        onChange={(e) => onUpload(e, section)}
+      />
+    </div>
+  );
+}
+
 function PDI({ onBack, onLogout }) {
   const [projectName, setProjectName] = useState(PERSISTED.projectName ?? '');
   const [reportHeading, setReportHeading] = useState(PERSISTED.reportHeading ?? DEFAULT_HEADING);
@@ -546,6 +612,54 @@ function PDI({ onBack, onLogout }) {
     setLuminaireRows(prev => prev.map((r, i) => (i === idx ? { ...r, [key]: value } : r)));
   }, []);
 
+  // ---- Sample-table Excel template download + bulk upload -----------------
+  // Download an .xlsx template matching a sample table's columns so records
+  // kept in the same format can be filled in and re-uploaded.
+  const downloadSampleTemplate = useCallback(async (which) => {
+    const config = {
+      spv: { cols: SPV_COLS, name: 'SPV_Module_Template', rows: spvRows },
+      battery: { cols: BATTERY_COLS, name: 'Battery_Template', rows: batteryRows },
+      luminaire: { cols: LUMINAIRE_COLS, name: 'Luminaire_Template', rows: luminaireRows },
+    }[which];
+    try {
+      // Pre-fill the template with the rows already in the table so existing
+      // data can be edited and more rows added, then re-uploaded. Always set a
+      // Sr. No. (the UI shows it as a placeholder, so row.srNo is often blank).
+      const rowsWithSrNo = (config.rows || []).map((r, i) => ({ ...r, srNo: r.srNo || i + 1 }));
+      await downloadTableTemplate(config.name, config.cols, rowsWithSrNo);
+    } catch (err) {
+      console.error('Failed to build template:', err);
+      alert(`Could not build template: ${err.message}`);
+    }
+  }, [spvRows, batteryRows, luminaireRows, sampleCount]);
+
+  // Bulk upload rows for a sample table. Parses the file in the template
+  // column order, grows sampleCount so every row is visible, and merges the
+  // uploaded values into that table (other tables keep their existing rows).
+  const bulkUploadSample = useCallback(async (e, which) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    const cfg = {
+      spv: { cols: SPV_COLS, setter: setSpvRows, makeEmpty: () => ({ srNo: '', make: '', type: '', wattageSpec: '', voc: '', isc: '', wattage: '', efficiency: '' }) },
+      battery: { cols: BATTERY_COLS, setter: setBatteryRows, makeEmpty: () => ({ srNo: '', make: '', type: '', voltage: '', capacity: '' }) },
+      luminaire: { cols: LUMINAIRE_COLS, setter: setLuminaireRows, makeEmpty: () => ({ srNo: '', make: '', power: '', noLoadCurrent: '', remoteMonitoring: '' }) },
+    }[which];
+    try {
+      const parsed = await parseTableRows(file, cfg.cols);
+      if (parsed.length === 0) {
+        alert('No data rows found in the uploaded file.');
+        return;
+      }
+      // Ensure every other table (and sampleCount) can hold this many rows.
+      setSampleCount(prev => Math.max(prev || 0, parsed.length));
+      cfg.setter(() => parsed.map(r => ({ ...cfg.makeEmpty(), ...r })));
+    } catch (err) {
+      console.error('Failed to read sample file:', err);
+      alert(`Could not read file: ${err.message}`);
+    }
+  }, []);
+
   const updateSignature = useCallback((idx, key, value) => {
     setSignatures(prev => prev.map((r, i) => (i === idx ? { ...r, [key]: value } : r)));
   }, []);
@@ -587,6 +701,47 @@ function PDI({ onBack, onLogout }) {
         ? { ...s, rows: s.rows.map((r, i) => (i === rowIdx ? { ...r, [key]: value } : r)) }
         : s
     )));
+  }, []);
+
+  // Download an .xlsx template for a custom section using its category's
+  // column layout (SPV / Battery / Luminaire).
+  const downloadCustomSectionTemplate = useCallback(async (sec) => {
+    const cfg = getCategoryConfig(sec.category);
+    const name = (sec.title || `${sec.category}_section`).replace(/[^\w\-]+/g, '_') || 'section';
+    try {
+      // Include the section's existing rows so they can be edited / extended.
+      const rowsWithSrNo = (sec.rows || []).map((r, i) => ({ ...r, srNo: r.srNo || i + 1 }));
+      await downloadTableTemplate(`${name}_Template`, cfg.cols, rowsWithSrNo);
+    } catch (err) {
+      console.error('Failed to build template:', err);
+      alert(`Could not build template: ${err.message}`);
+    }
+  }, []);
+
+  // Bulk upload rows into a custom section. Parses the file in the section's
+  // category column order, grows sampleCount so every row is visible, and
+  // replaces that section's rows.
+  const bulkUploadCustomSection = useCallback(async (e, sec) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    const cfg = getCategoryConfig(sec.category);
+    try {
+      const parsed = await parseTableRows(file, cfg.cols);
+      if (parsed.length === 0) {
+        alert('No data rows found in the uploaded file.');
+        return;
+      }
+      setSampleCount(prev => Math.max(prev || 0, parsed.length));
+      setCustomSections(prev => prev.map(s => (
+        s.id === sec.id
+          ? { ...s, rows: parsed.map(r => ({ ...cfg.makeEmpty(), ...r })) }
+          : s
+      )));
+    } catch (err) {
+      console.error('Failed to read sample file:', err);
+      alert(`Could not read file: ${err.message}`);
+    }
   }, []);
 
   // Custom bulk-upload section handlers
@@ -1603,7 +1758,10 @@ function PDI({ onBack, onLogout }) {
         {sampleCount > 0 && (
           <>
             <section className="jcr-card">
-              <h3>(I) SPV MODULE</h3>
+              <div className="pdi-sample-head">
+                <h3>(I) SPV MODULE</h3>
+                <SampleBulkToolbar which="spv" onTemplate={downloadSampleTemplate} onUpload={bulkUploadSample} />
+              </div>
               <div className="jcr-table-wrapper">
                 <table className="jcr-table">
                   <thead>
@@ -1640,7 +1798,10 @@ function PDI({ onBack, onLogout }) {
             </section>
 
             <section className="jcr-card">
-              <h3>(II) BATTERY: -</h3>
+              <div className="pdi-sample-head">
+                <h3>(II) BATTERY: -</h3>
+                <SampleBulkToolbar which="battery" onTemplate={downloadSampleTemplate} onUpload={bulkUploadSample} />
+              </div>
               <div className="jcr-table-wrapper">
                 <table className="jcr-table">
                   <thead>
@@ -1668,7 +1829,10 @@ function PDI({ onBack, onLogout }) {
             </section>
 
             <section className="jcr-card">
-              <h3>(III) LUMINARIES: -</h3>
+              <div className="pdi-sample-head">
+                <h3>(III) LUMINARIES: -</h3>
+                <SampleBulkToolbar which="luminaire" onTemplate={downloadSampleTemplate} onUpload={bulkUploadSample} />
+              </div>
               <div className="jcr-table-wrapper">
                 <table className="jcr-table">
                   <thead>
@@ -1716,6 +1880,11 @@ function PDI({ onBack, onLogout }) {
                       <option key={c.value} value={c.value}>Under: {c.label}</option>
                     ))}
                   </select>
+                  <CustomSectionBulkToolbar
+                    section={sec}
+                    onTemplate={downloadCustomSectionTemplate}
+                    onUpload={bulkUploadCustomSection}
+                  />
                   <button className="btn-remove-text" onClick={() => removeCustomSection(sec.id)}>
                     <Trash2 size={14} /> Remove Section
                   </button>

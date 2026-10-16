@@ -492,6 +492,7 @@
 .jcr-custom-head {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 12px;
   margin-bottom: 12px;
 }
@@ -835,4 +836,23 @@
 
 .pdi-pagenum-item input {
   width: 72px;
+}
+
+/* Sample-table header row: title on the left, bulk tools on the right */
+.pdi-sample-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.pdi-sample-head h3 {
+  margin: 0;
+}
+
+.pdi-sample-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }

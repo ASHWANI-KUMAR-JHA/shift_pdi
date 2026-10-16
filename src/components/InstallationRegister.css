@@ -974,3 +974,35 @@
 
 .btn-assign-sno:hover:not(:disabled) { background: #4338ca; }
 .btn-assign-sno:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Work Order select button (replaces free-text input) */
+.work-order-select-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  text-align: left;
+  transition: border-color 0.2s;
+}
+
+.work-order-select-btn:hover {
+  border-color: #9ca3af;
+}
+
+.work-order-select-btn .wo-selected {
+  color: #111827;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.work-order-select-btn .wo-placeholder {
+  color: #9ca3af;
+}

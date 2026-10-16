@@ -6,7 +6,7 @@
 //   2. A small set of built-in admin accounts kept in code as a fallback so
 //      the app is always accessible even before any users are created.
 
-import { findUserByEmail, sha256 } from './users';
+import { findUserByEmailOrPhone, sha256 } from './users';
 
 // Pre-computed SHA-256 hashes of built-in admin credentials.
 // These hashes are irreversible - the plain text cannot be recovered from them.
@@ -35,14 +35,16 @@ export function isBuiltInAdmin(email) {
   return VALID_USERS.some((u) => u.email.toLowerCase() === e);
 }
 
-// Validate credentials. Returns the matched user's public profile
-// ({ name, email }) on success, or null on failure.
-export async function validateCredentials(email, password) {
+// Validate credentials. `identifier` may be an email address or a mobile
+// number. Returns the matched user's public profile ({ name, email }) on
+// success, or null on failure.
+export async function validateCredentials(identifier, password) {
   const passwordHash = await sha256(password);
+  const id = String(identifier || '').trim();
 
-  // 1. Try the Supabase-managed users first.
+  // 1. Try the Supabase-managed users first (matches email OR phone number).
   try {
-    const user = await findUserByEmail(email);
+    const user = await findUserByEmailOrPhone(id);
     if (user && user.password_hash === passwordHash) {
       if (user.is_active === false) {
         const err = new Error('This account is inactive. Please contact an administrator.');
@@ -58,9 +60,9 @@ export async function validateCredentials(email, password) {
     console.warn('Supabase user lookup failed, falling back to built-in accounts:', err.message);
   }
 
-  // 2. Fall back to the built-in admin accounts.
+  // 2. Fall back to the built-in admin accounts (email only).
   const admin = VALID_USERS.find(
-    (u) => u.email.toLowerCase() === email.toLowerCase() && u.passwordHash === passwordHash
+    (u) => u.email.toLowerCase() === id.toLowerCase() && u.passwordHash === passwordHash
   );
   return admin ? { name: admin.name, email: admin.email } : null;
 }

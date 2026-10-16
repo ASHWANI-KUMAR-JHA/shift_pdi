@@ -314,9 +314,7 @@ function InstallationRegister({ onBack, onLogout }) {
         {mode === 'entry' ? (
           <EntryView
             projectName={projectName}
-            setProjectName={setProjectName}
             workOrder={workOrder}
-            setWorkOrder={setWorkOrder}
             snoStart={snoStart}
             setSnoStart={setSnoStart}
             rows={rows}
@@ -334,6 +332,7 @@ function InstallationRegister({ onBack, onLogout }) {
             workOrderSearch={workOrderSearch}
             setWorkOrderSearch={setWorkOrderSearch}
             filteredWorkOrders={filteredWorkOrders}
+            handleSelectWorkOrder={handleSelectWorkOrder}
           />
         ) : (
           <DashboardView
@@ -356,10 +355,10 @@ function InstallationRegister({ onBack, onLogout }) {
 }
 
 function EntryView({
-  projectName, setProjectName, workOrder, setWorkOrder, snoStart, setSnoStart,
+  projectName, workOrder, snoStart, setSnoStart,
   rows, addRow, removeRow, updateCell, handlePaste, handleSave, handleBulkUpload, saving, message,
   availableWorkOrders, showWorkOrderDropdown, setShowWorkOrderDropdown, 
-  workOrderSearch, setWorkOrderSearch, filteredWorkOrders,
+  workOrderSearch, setWorkOrderSearch, filteredWorkOrders, handleSelectWorkOrder,
 }) {
   const fileInputRef = useRef(null);
 
@@ -372,15 +371,6 @@ function EntryView({
   return (
     <>
       <div className="id-panel">
-        <div className="id-field">
-          <label>Project Name <span className="opt">(optional)</span></label>
-          <input
-            type="text"
-            value={projectName}
-            onChange={(e) => setProjectName(e.target.value)}
-            placeholder="e.g., Panchkula Solar Street Light Phase-1"
-          />
-        </div>
         <div className="id-field">
           <label>S.No Start <span className="opt">(auto-increment)</span></label>
           <input
@@ -396,7 +386,7 @@ function EntryView({
         </div>
         <div className="id-field work-order-selector">
           <label>
-            Work Order <span className="opt">(optional)</span>
+            Work Order <span className="opt">(select from available)</span>
             {availableWorkOrders.length > 0 && (
               <span className="available-count">
                 {availableWorkOrders.length} available
@@ -404,23 +394,19 @@ function EntryView({
             )}
           </label>
           <div className="work-order-input-wrapper">
-            <input
-              type="text"
-              value={workOrder}
-              onChange={(e) => setWorkOrder(e.target.value)}
-              onFocus={() => setShowWorkOrderDropdown(true)}
-              placeholder="e.g., WO/2026/00123 or select from available"
-            />
-            {availableWorkOrders.length > 0 && (
-              <button
-                type="button"
-                className="btn-dropdown-toggle"
-                onClick={() => setShowWorkOrderDropdown(!showWorkOrderDropdown)}
-                title="Select from available work orders"
-              >
-                <ChevronDown size={16} />
-              </button>
-            )}
+            <button
+              type="button"
+              className="work-order-select-btn"
+              onClick={() => setShowWorkOrderDropdown(!showWorkOrderDropdown)}
+              title="Select from available work orders"
+            >
+              <span className={workOrder ? 'wo-selected' : 'wo-placeholder'}>
+                {workOrder
+                  ? `${workOrder}${projectName ? ` — ${projectName}` : ''}`
+                  : 'Select a work order'}
+              </span>
+              <ChevronDown size={16} />
+            </button>
           </div>
           
           {showWorkOrderDropdown && availableWorkOrders.length > 0 && (

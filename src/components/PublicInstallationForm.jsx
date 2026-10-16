@@ -30,11 +30,10 @@ const STEPS = [
     title: 'Project',
     hint: 'Start with what project this installation belongs to. If you are unsure, ask your supervisor.',
     icon: FolderOpen,
-    required: ['project_name'],
-    fields: [
-      { key: 'project_name', label: 'Project Name', placeholder: 'e.g., Solar Street Light Phase-1', help: 'The name of the overall project.' },
-      { key: 'work_order', label: 'Work Order', placeholder: 'e.g., WO/2026/00123', help: 'The work order number, if you have one.' },
-    ],
+    required: ['work_order'],
+    // Project name and work order are set by the Work Order dropdown above, so
+    // no free-text fields are rendered here.
+    fields: [],
   },
   {
     id: 'location',
@@ -288,6 +287,8 @@ function PublicInstallationForm({ onLogout, initialWorkOrder = '' }) {
       ...prev,
       // Record the specific order number the user picked (fall back to name).
       work_order: wo ? (orderNo || wo.name) : prev.work_order,
+      // Project name is derived from the selected work order's name.
+      project_name: wo ? (wo.name || orderNo || prev.project_name) : prev.project_name,
       module_serial: '',
       battery_serial: '',
       luminaire_serial: '',
@@ -299,8 +300,11 @@ function PublicInstallationForm({ onLogout, initialWorkOrder = '' }) {
   useEffect(() => {
     if (selectedWorkOrder) {
       const desired = selectedOrderNo || selectedWorkOrder.name;
+      const desiredProject = selectedWorkOrder.name || selectedOrderNo;
       setForm((prev) =>
-        prev.work_order === desired ? prev : { ...prev, work_order: desired }
+        prev.work_order === desired && prev.project_name === desiredProject
+          ? prev
+          : { ...prev, work_order: desired, project_name: desiredProject }
       );
     }
   }, [selectedWorkOrder, selectedOrderNo]);
@@ -965,7 +969,18 @@ function ReviewPanel({ form, files, onEdit }) {
               Edit
             </button>
           </div>
-          {s.id === 'files' ? (
+          {s.id === 'project' ? (
+            <dl className="pf-review-list">
+              <div className="pf-review-item">
+                <dt>Work Order</dt>
+                <dd>{String(form.work_order ?? '').trim() || '—'}</dd>
+              </div>
+              <div className="pf-review-item">
+                <dt>Project Name</dt>
+                <dd>{String(form.project_name ?? '').trim() || '—'}</dd>
+              </div>
+            </dl>
+          ) : s.id === 'files' ? (
             <dl className="pf-review-list">
               <div className="pf-review-item">
                 <dt>Site Image</dt>

@@ -4,7 +4,7 @@ import Logo from './Logo';
 import './Login.css';
 
 function Login({ onLoginSuccess }) {
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -15,19 +15,19 @@ function Login({ onLoginSuccess }) {
     setError('');
     setLoading(true);
 
-    if (!email || !password) {
-      setError('Please enter both email and password.');
+    if (!identifier || !password) {
+      setError('Please enter your email or mobile number and password.');
       setLoading(false);
       return;
     }
 
     try {
-      const user = await validateCredentials(email, password);
+      const user = await validateCredentials(identifier, password);
       if (user) {
         setSession(user);
         onLoginSuccess();
       } else {
-        setError('Invalid email or password.');
+        setError('Invalid email / mobile number or password.');
       }
     } catch (err) {
       setError(err?.code === 'INACTIVE'
@@ -49,14 +49,14 @@ function Login({ onLoginSuccess }) {
 
         <form className="login-form" onSubmit={handleSubmit}>
           <div className="login-field">
-            <label htmlFor="email">Email Address</label>
+            <label htmlFor="identifier">Email or Mobile Number</label>
             <input
-              id="email"
-              type="email"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              placeholder="Enter your email"
-              autoComplete="email"
+              id="identifier"
+              type="text"
+              value={identifier}
+              onChange={e => setIdentifier(e.target.value)}
+              placeholder="Enter your email or mobile number"
+              autoComplete="username"
               autoFocus
             />
           </div>

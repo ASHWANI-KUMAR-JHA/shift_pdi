@@ -96,3 +96,59 @@ export function extractIdList(cellRows) {
   }
   return ids;
 }
+
+// ---------------------------------------------------------------------------
+// Structured table templates (used by the PDI sample tables).
+//
+// Unlike extractIdList (which pulls a single column of serial numbers), these
+// helpers round-trip a full multi-column table. A template is a list of
+// column definitions: [{ key, label }, ...]. The first sheet row is the human
+// readable header (label), and each subsequent row maps back onto the column
+// keys so the data can repopulate the form in the exact same format.
+// ---------------------------------------------------------------------------
+
+// Build and download an .xlsx template with the given column headers.
+// `rows` (optional) pre-fills the sheet with existing data so the file can be
+// edited and re-uploaded. Accepts a single row object or an array of rows.
+export async function downloadTableTemplate(filename, columns, rows) {
+  const XLSX = await import('xlsx');
+  const header = columns.map((c) => c.label);
+  const aoa = [header];
+  const list = Array.isArray(rows) ? rows : rows ? [rows] : [];
+  for (const row of list) {
+    aoa.push(columns.map((c) => (row?.[c.key] ?? '')));
+  }
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = columns.map((c) => ({ wch: Math.max(14, c.label.length + 2) }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Template');
+  XLSX.writeFile(wb, filename.endsWith('.xlsx') ? filename : `${filename}.xlsx`);
+}
+
+// Parse an uploaded spreadsheet/text file into an array of row objects keyed
+// by the template column keys. Header detection is tolerant: if the first row
+// matches the template labels (case-insensitive) it is treated as a header and
+// skipped; otherwise all rows are treated as data. Columns are matched by
+// position so the file just needs the columns in the same order as the
+// template.
+export async function parseTableRows(file, columns) {
+  const rows = await readSheetRows(file);
+  if (!rows.length) return [];
+
+  const labelSet = new Set(columns.map((c) => String(c.label).trim().toLowerCase()));
+  const firstCells = rows[0].map((c) => String(c).trim().toLowerCase());
+  const firstIsHeader =
+    firstCells.length > 0 && firstCells.some((cell) => labelSet.has(cell));
+
+  const dataRows = firstIsHeader ? rows.slice(1) : rows;
+
+  return dataRows
+    .filter((cells) => cells.some((c) => String(c).trim() !== ''))
+    .map((cells) => {
+      const obj = {};
+      columns.forEach((col, i) => {
+        obj[col.key] = cells[i] != null ? String(cells[i]).trim() : '';
+      });
+      return obj;
+    });
+}
