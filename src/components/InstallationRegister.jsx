@@ -3,7 +3,7 @@ import {
   ArrowLeft, LogOut, Plus, Trash2, Save, LayoutGrid, ClipboardList,
   Search, RefreshCw, MapPin, ClipboardPaste, Upload, Share2, Download, ChevronDown, X,
   Pencil, Check, Calendar, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight,
-  FileText, Paperclip, Image as ImageIcon, Send,
+  FileText, Paperclip, Image as ImageIcon, Send, ImagePlus, FileArchive,
 } from 'lucide-react';
 import Logo from './Logo';
 import {
@@ -20,6 +20,8 @@ import {
 } from '../utils/installations';
 import { storePendingJCRImport } from '../utils/jcrDataTransfer';
 import { fetchAvailableWorkOrders } from '../utils/workOrderSync';
+import { uploadInstallationImage } from '../utils/storageUploads';
+import { getSiteImage, downloadInstallationImage, downloadInstallationImagesZip } from '../utils/imageDownloads';
 import './InstallationRegister.css';
 
 // Fields shown as editable columns in the entry grid (excludes project/work order
@@ -603,6 +605,109 @@ function DashboardView({
     }
   }, [records, selectedIds]);
 
+  // --- Image upload / download ---------------------------------------------
+  // Id of the record whose image is currently uploading (for a spinner).
+  const [uploadingImageId, setUploadingImageId] = useState(null);
+  // Id of the record whose image is currently downloading.
+  const [downloadingImageId, setDownloadingImageId] = useState(null);
+  // Bulk zip download progress: null when idle, otherwise { done, total }.
+  const [bulkDownload, setBulkDownload] = useState(null);
+  // Hidden file input used to pick a replacement image, plus the target record.
+  const imageInputRef = useRef(null);
+  const [uploadTargetId, setUploadTargetId] = useState(null);
+  // Staged file awaiting the user's "Submit" confirmation:
+  //   { id, mode: 'add' | 'replace', file, previewUrl }
+  const [pendingImage, setPendingImage] = useState(null);
+
+  // Admin clicks "Upload image" on a row → open the native file picker.
+  const promptImageUpload = useCallback((id) => {
+    setUploadTargetId(id);
+    if (imageInputRef.current) {
+      imageInputRef.current.value = '';
+      imageInputRef.current.click();
+    }
+  }, []);
+
+  // A file was chosen — stage it (with a preview) for confirmation instead of
+  // uploading immediately. Nothing is sent until the user clicks Submit.
+  const handleImageFileChosen = useCallback((e) => {
+    const file = e.target.files && e.target.files[0];
+    const id = uploadTargetId;
+    e.target.value = '';
+    setUploadTargetId(null);
+    if (!file || id == null) return;
+    if (!file.type || !file.type.startsWith('image/')) {
+      alert('Only image files are allowed.');
+      return;
+    }
+    const record = records.find((r) => r.id === id);
+    const mode = getSiteImage(record) ? 'replace' : 'add';
+    setPendingImage({ id, mode, file, previewUrl: URL.createObjectURL(file) });
+  }, [uploadTargetId, records]);
+
+  // Discard the staged image without uploading.
+  const cancelPendingImage = useCallback(() => {
+    setPendingImage((prev) => {
+      if (prev?.previewUrl) URL.revokeObjectURL(prev.previewUrl);
+      return null;
+    });
+  }, []);
+
+  // User confirmed — upload the staged file and attach it to the same record.
+  const submitPendingImage = useCallback(async () => {
+    if (!pendingImage) return;
+    const { id, file, previewUrl } = pendingImage;
+    setUploadingImageId(id);
+    try {
+      const meta = await uploadInstallationImage(file);
+      await handleUpdate(id, { site_image: meta });
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      setPendingImage(null);
+    } catch (err) {
+      alert(err.message || 'Failed to upload image.');
+    } finally {
+      setUploadingImageId(null);
+    }
+  }, [pendingImage, handleUpdate]);
+
+  // Download a single record's image.
+  const handleDownloadImage = useCallback(async (record) => {
+    setDownloadingImageId(record.id);
+    try {
+      await downloadInstallationImage(record);
+    } catch (err) {
+      alert(err.message || 'Failed to download image.');
+    } finally {
+      setDownloadingImageId(null);
+    }
+  }, []);
+
+  // Download every selected record's image as a single ZIP archive.
+  const handleBulkDownload = useCallback(async () => {
+    const selected = records.filter((r) => selectedIds.has(r.id));
+    if (selected.length === 0) {
+      alert('Please select at least one installation to download images.');
+      return;
+    }
+    setBulkDownload({ done: 0, total: selected.length });
+    try {
+      const { downloaded, skipped, failed } = await downloadInstallationImagesZip(
+        selected,
+        (p) => setBulkDownload(p)
+      );
+      const notes = [];
+      if (skipped) notes.push(`${skipped} had no image`);
+      if (failed) notes.push(`${failed} failed to fetch`);
+      if (notes.length) {
+        alert(`Downloaded ${downloaded} image(s). ${notes.join(', ')}.`);
+      }
+    } catch (err) {
+      alert(err.message || 'Failed to build the download.');
+    } finally {
+      setBulkDownload(null);
+    }
+  }, [records, selectedIds]);
+
   const beginEdit = useCallback((record) => {
     setEditError(null);
     setEditingId(record.id);
@@ -854,6 +959,17 @@ function DashboardView({
         >
           <Send size={16} /> Submit to JCR ({selectedIds.size})
         </button>
+        <button
+          className="btn-bulk-download"
+          onClick={handleBulkDownload}
+          disabled={selectedIds.size === 0 || bulkDownload != null}
+          title="Download images of selected installations as a ZIP"
+        >
+          <FileArchive size={16} />
+          {bulkDownload
+            ? `Zipping ${bulkDownload.done}/${bulkDownload.total}…`
+            : `Download Images (${selectedIds.size})`}
+        </button>
         <div className="sno-assign">
           <input
             type="text"
@@ -956,6 +1072,51 @@ function DashboardView({
       </div>
 
       {dashError && <div className="msg error">{dashError}</div>}
+
+      {/* Hidden picker used by the per-row "Upload image" action. */}
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/*"
+        style={{ display: 'none' }}
+        onChange={handleImageFileChosen}
+      />
+
+      {/* Confirmation step shown after an image is selected. Nothing uploads
+          until the user clicks Submit. */}
+      {pendingImage && (
+        <div className="image-confirm-overlay" onClick={cancelPendingImage}>
+          <div className="image-confirm-dialog" onClick={(e) => e.stopPropagation()}>
+            <h3>
+              {pendingImage.mode === 'replace' ? 'Replace site image' : 'Add site image'}
+            </h3>
+            <div className="image-confirm-preview">
+              <img src={pendingImage.previewUrl} alt={pendingImage.file.name} />
+            </div>
+            <p className="image-confirm-name" title={pendingImage.file.name}>
+              {pendingImage.file.name}
+            </p>
+            <div className="image-confirm-actions">
+              <button
+                className="btn-icon"
+                onClick={cancelPendingImage}
+                disabled={uploadingImageId === pendingImage.id}
+              >
+                <X size={15} /> Cancel
+              </button>
+              <button
+                className="btn-submit-jcr"
+                onClick={submitPendingImage}
+                disabled={uploadingImageId === pendingImage.id}
+              >
+                {uploadingImageId === pendingImage.id
+                  ? <><RefreshCw size={15} className="dash-spin" /> Uploading…</>
+                  : <><Check size={15} /> Submit</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="dash-table-wrapper">
         <table className="dash-table">
@@ -1095,6 +1256,26 @@ function DashboardView({
                     <div className="row-actions">
                       <button className="btn-icon" onClick={() => beginEdit(r)} title="Edit">
                         <Pencil size={15} />
+                      </button>
+                      <button
+                        className="btn-icon"
+                        onClick={() => promptImageUpload(r.id)}
+                        disabled={uploadingImageId === r.id}
+                        title="Upload / replace site image"
+                      >
+                        {uploadingImageId === r.id
+                          ? <RefreshCw size={15} className="dash-spin" />
+                          : <ImagePlus size={15} />}
+                      </button>
+                      <button
+                        className="btn-icon"
+                        onClick={() => handleDownloadImage(r)}
+                        disabled={!getSiteImage(r) || downloadingImageId === r.id}
+                        title={getSiteImage(r) ? 'Download site image' : 'No image to download'}
+                      >
+                        {downloadingImageId === r.id
+                          ? <RefreshCw size={15} className="dash-spin" />
+                          : <Download size={15} />}
                       </button>
                       <button className="btn-icon danger" onClick={() => handleDelete(r.id)} title="Delete">
                         <Trash2 size={15} />

@@ -126,3 +126,15 @@ export async function deleteWorkOrderPdf(path) {
     
   if (error) throw new Error(`Failed to delete PDF: ${error.message}`);
 }
+
+// Upload a single replacement site image for an installation record.
+// Used by the dashboard "Upload image" action so an admin can fix a wrong
+// photo directly. Returns metadata { name, path, url, size, type } that can be
+// written straight onto the installation's `site_image` column.
+export async function uploadInstallationImage(file) {
+  if (!file) throw new Error('No file provided');
+  if (!file.type || !file.type.startsWith('image/')) {
+    throw new Error('Only image files are allowed');
+  }
+  return uploadOne('site_image', file);
+}
